@@ -2,10 +2,7 @@
   "mcpServers": {
     "replay": {
       "type": "http",
-      "url": "https://dispatch.replay.io/nut/mcp",
-      "headers": {
-        "Authorization": "${REPLAY_API_KEY}"
-      }
+      "url": "https://dispatch.replay.io/mcp"
     }
   }
 }

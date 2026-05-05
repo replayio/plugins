@@ -64,12 +64,12 @@ command -v npx >/dev/null 2>&1
 
 If missing, stop and ask the user to install Node.js/npm.
 
-## Replay MCP authentication (required for private recordings)
+## Replay MCP authentication (private recordings)
 
-Replay MCP needs an API key to access private recordings. Ensure the MCP server config includes an `Authorization` header.
+Replay MCP calls are authorized **per user**. If tools return **Access denied**, you are usually not authenticated to Replay **as the same account that owns the recording**.
 
-- Generate an API key from Replay (see Replay docs).
-- Set `REPLAY_API_KEY` in the environment where Cursor runs, or set the header directly in Cursor’s MCP server config.
+- **Cursor**: open **Settings → MCP**, select the **Replay** server, and complete **Sign in / Connect / Reconnect** so Cursor can finish the **OAuth** flow (including **dynamic client registration** when supported). Stay on `https://dispatch.replay.io/mcp` (do not swap in unrelated endpoints unless Replay explicitly instructs you to).
+- **Other hosts**: follow that host’s MCP authentication mechanism (some environments use API keys or separate app connectors instead of OAuth).
 
 ## Replay setup
 
