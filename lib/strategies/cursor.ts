@@ -30,6 +30,13 @@ Record browser sessions with the **Replay Browser** via Playwright CLI, inspect 
 
 Ensure **Node.js** (\`npx\`) and the **Replay CLI** (\`replayio\`) are available per \`skills/replayio/SKILL.md\`. Enable the \`replay\` MCP server in Cursor settings if it is not on by default.
 
+## Replay MCP authentication
+
+Most recordings are private. For Replay MCP tools to access your recordings (avoid **"Access denied"**), configure the MCP server with an API key:
+
+- Set an environment variable: \`REPLAY_API_KEY=<your key>\` (recommended), or
+- Put the header directly in the MCP server config: \`Authorization: <your key>\`
+
 ## What ships in this bundle
 
 | Component | Path |

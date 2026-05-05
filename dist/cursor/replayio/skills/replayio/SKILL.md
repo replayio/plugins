@@ -70,6 +70,13 @@ command -v npx >/dev/null 2>&1
 
 If missing, stop and ask the user to install Node.js/npm.
 
+## Replay MCP authentication (required for private recordings)
+
+Replay MCP needs an API key to access private recordings. Ensure the MCP server config includes an `Authorization` header.
+
+- Generate an API key from Replay (see Replay docs).
+- Set `REPLAY_API_KEY` in the environment where Cursor runs, or set the header directly in Cursor’s MCP server config.
+
 ## Replay setup
 
 Do not blindly reinstall Replay on every run. Verify first.
