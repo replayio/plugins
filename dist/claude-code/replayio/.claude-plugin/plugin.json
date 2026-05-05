@@ -1,0 +1,20 @@
+{
+  "name": "replayio",
+  "version": "0.1.0",
+  "description": "Record browser sessions with the Replay Browser via Playwright CLI, analyze recordings through the Replay MCP server, and auto-upload recordings when the browser closes or Claude Code stops.",
+  "author": {
+    "name": "Replay",
+    "url": "https://replay.io"
+  },
+  "homepage": "https://replay.io",
+  "repository": "https://github.com/openai/plugins",
+  "license": "MIT",
+  "keywords": [
+    "replay",
+    "playwright",
+    "browser-automation",
+    "time-travel-debugging",
+    "recording",
+    "mcp"
+  ]
+}

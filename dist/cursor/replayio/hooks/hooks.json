@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "afterShellExecution": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/scripts/post_bash_upload.sh\"",
+        "matcher": "playwright.*close|pwcli.*close|PWCLI.*close"
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/scripts/stop_close_and_upload.sh\""
+      }
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "replayio",
+  "version": "0.1.0",
+  "description": "Record browser sessions with the Replay Browser via Playwright CLI, analyze recordings through the connected Replay ChatGPT app, and auto-upload recordings when the browser closes or the turn ends.",
+  "author": {
+    "name": "Replay",
+    "url": "https://replay.io"
+  },
+  "homepage": "https://replay.io",
+  "repository": "https://github.com/openai/plugins",
+  "license": "MIT",
+  "keywords": [
+    "replay",
+    "playwright",
+    "browser-automation",
+    "time-travel-debugging",
+    "recording",
+    "chatgpt-app"
+  ],
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "hooks": "./hooks.json",
+  "interface": {
+    "displayName": "Replay.io",
+    "shortDescription": "Record browser sessions and analyze recordings",
+    "longDescription": "Drive a real browser with Playwright CLI against the Replay Browser to capture time-travel debuggable recordings, auto-upload them on close, and analyze uploaded recordings through the connected Replay ChatGPT app.",
+    "developerName": "Replay",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://replay.io",
+    "privacyPolicyURL": "https://replay.io/privacy",
+    "termsOfServiceURL": "https://replay.io/terms",
+    "defaultPrompt": [
+      "Record a Playwright session against this local app and analyze the resulting recording"
+    ],
+    "brandColor": "#F02D5E",
+    "composerIcon": "./assets/replayio.svg",
+    "logo": "./assets/replayio.svg",
+    "screenshots": []
+  }
+}
