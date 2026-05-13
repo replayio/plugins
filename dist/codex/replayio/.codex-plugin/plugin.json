@@ -1,7 +1,7 @@
 {
   "name": "replayio",
   "version": "0.1.0",
-  "description": "Record browser sessions with the Replay Browser via Playwright CLI, analyze recordings through the connected Replay ChatGPT app, and auto-upload recordings when the browser closes or the turn ends.",
+  "description": "Record browser sessions with the Replay Browser via Playwright CLI, analyze recordings through Replay MCP tools with rich inspector widgets, and auto-upload recordings when the browser closes or the turn ends.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -19,11 +19,12 @@
   ],
   "skills": "./skills/",
   "apps": "./.app.json",
+  "mcpServers": "./.mcp.json",
   "hooks": "./hooks.json",
   "interface": {
     "displayName": "Replay.io",
-    "shortDescription": "Record browser sessions and analyze recordings",
-    "longDescription": "Drive a real browser with Playwright CLI against the Replay Browser to capture time-travel debuggable recordings, auto-upload them on close, and analyze uploaded recordings through the connected Replay ChatGPT app.",
+    "shortDescription": "Record browser sessions and inspect Replay recordings",
+    "longDescription": "Drive a real browser with Playwright CLI against the Replay Browser to capture time-travel debuggable recordings, auto-upload them on close, and analyze uploaded recordings through Replay MCP tools. In MCP Apps-aware hosts, Replay tool results can render rich debugging widgets for logpoints, console output, React trees, Redux state, network requests, screenshots, source code, profiles, and exception stacks.",
     "developerName": "Replay",
     "category": "Coding",
     "capabilities": [

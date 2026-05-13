@@ -1,9 +1,9 @@
 ---
 name: "replayio"
-description: "Use when you need to record or inspect a Playwright CLI browser run in Replay, test a local app directly with Playwright CLI, or use the connected Replay app for deeper debugging of an uploaded recording."
+description: "Use when you need to record or inspect a Playwright CLI browser run in Replay, test a local app directly with Playwright CLI, or use the Replay MCP server for deeper debugging of an uploaded recording."
 ---
 
-# Replay Browser + Playwright CLI + Replay App
+# Replay Browser + Playwright CLI + Replay MCP
 
 Use `playwright-cli` with the Replay Browser whenever you need a recorded browser session. Recordings upload automatically — you do **not** need to run `replayio upload` yourself. Your only responsibility is to **close the browser when the test is complete**. The plugin's hooks handle the rest:
 
@@ -14,9 +14,9 @@ Always prefer closing explicitly — it gives faster feedback and ensures record
 
 ## Direct CLI first
 
-Use `playwright-cli` directly for live browser control and first-pass inspection. Do not reach for the connected Replay app just to click, type, snapshot, read console output, inspect network requests, take screenshots, read storage, or check cookies.
+Use `playwright-cli` directly for live browser control and first-pass inspection. Do not reach for the Replay MCP server just to click, type, snapshot, read console output, inspect network requests, take screenshots, read storage, or check cookies.
 
-Use the connected Replay app only after a recording has uploaded and you need deeper Replay-specific debugging, such as inspecting execution history, narrowing a time-travel debugging problem, or investigating details that the live CLI cannot answer.
+Use the Replay MCP server only after a recording has uploaded and you need deeper Replay-specific debugging, such as inspecting execution history, narrowing a time-travel debugging problem, or investigating details that the live CLI cannot answer.
 
 Useful direct commands:
 
@@ -171,7 +171,13 @@ If the browser is already running:
 
 ## Analyzing uploaded recordings
 
-First inspect the live run with direct `playwright-cli` commands. Once a recording has uploaded, use the connected Replay app tools only when you need deeper Replay-specific debugging beyond direct CLI output. This plugin does not launch a local MCP server; app authentication and tool exposure are handled by the connected Replay app.
+First inspect the live run with direct `playwright-cli` commands. Once a recording has uploaded, use the `replay` MCP server tools only when you need deeper Replay-specific debugging beyond direct CLI output. Codex connects to the Replay HTTP MCP server configured in `.mcp.json`; the connected Replay app id remains available in `.app.json` for app-level authentication and compatibility.
+
+## Replay MCP widgets
+
+Replay MCP tool calls may return both text `content` for the model and `structuredContent` for an MCP Apps widget. In MCP Apps-aware hosts, prefer the rendered widget for dense debugging views such as Logpoint output, React component trees, Redux actions, network details, screenshots, source code, profiles, and exception stacks.
+
+When a widget is visible, use it as evidence instead of restating every detail in prose. Use follow-up actions or related Replay MCP tools when the widget points to a specific point, source, component, request, or stack frame that needs deeper inspection.
 
 ## Recording uploads are automatic
 
@@ -195,7 +201,7 @@ replayio list
 - If the requested port was busy, use the actual port printed by the dev server.
 - If a browser exists but your commands are detached, use `list` then `attach`.
 - Prefer explicit commands like `fill`, `click`, `check`, and `press` over `eval` or `run-code`.
-- Prefer direct CLI inspection (`console`, `network`, `screenshot`, storage, cookies, `eval`) before using the connected Replay app.
+- Prefer direct CLI inspection (`console`, `network`, `screenshot`, storage, cookies, `eval`) before using the Replay MCP server.
 - If Replay authentication fails, run `replayio login` or reconnect the relevant Replay app/integration.
 
 ## References

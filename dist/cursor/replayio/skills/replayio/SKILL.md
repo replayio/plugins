@@ -179,6 +179,12 @@ If the browser is already running:
 
 First inspect the live run with direct `playwright-cli` commands. Once a recording has uploaded, use the `replay` MCP server tools only when you need deeper Replay-specific debugging beyond direct CLI output. Cursor connects to the Replay HTTP MCP server configured in `mcp.json`.
 
+## Replay MCP widgets
+
+Replay MCP tool calls may return both text `content` for the model and `structuredContent` for an MCP Apps widget. In MCP Apps-aware hosts, prefer the rendered widget for dense debugging views such as Logpoint output, React component trees, Redux actions, network details, screenshots, source code, profiles, and exception stacks.
+
+When a widget is visible, use it as evidence instead of restating every detail in prose. Use follow-up actions or related Replay MCP tools when the widget points to a specific point, source, component, request, or stack frame that needs deeper inspection.
+
 ## Recording uploads are automatic
 
 You do **not** need to run `replayio list` or `replayio upload <id>` manually. The plugin's hooks handle uploads:
