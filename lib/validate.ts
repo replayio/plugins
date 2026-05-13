@@ -45,6 +45,27 @@ for (const file of await jsonFiles(path.join(root, "dist"))) {
   JSON.parse(await readFile(file, "utf8"));
 }
 
+const placeholderPattern = /\{\{[A-Za-z0-9_]+\}\}/g;
+const placeholderFailures: { file: string; tokens: string[] }[] = [];
+for (const file of await markdownFiles(path.join(root, "dist"))) {
+  const content = await readFile(file, "utf8");
+  const matches = [...content.matchAll(placeholderPattern)];
+  if (matches.length > 0) {
+    const tokens = [...new Set(matches.map((m) => m[0]))].sort();
+    placeholderFailures.push({ file: path.relative(root, file), tokens });
+  }
+}
+if (placeholderFailures.length > 0) {
+  const summary = placeholderFailures
+    .map(({ file, tokens }) => `  ${file}: ${tokens.join(", ")}`)
+    .join("\n");
+  throw new Error(
+    `Rendered Markdown contains unsubstituted placeholders. ` +
+      `Add the missing placeholders to render() in lib/build-helpers.ts ` +
+      `(or remove them from src/content/*.md):\n${summary}`,
+  );
+}
+
 check(["node", "--check", path.join(root, `${connectors.opencode.output}/.opencode/plugins/replayio.js`)]);
 
 if (commandExists("claude")) {
@@ -142,6 +163,20 @@ async function jsonFiles(dir: string): Promise<string[]> {
     if (entry.isDirectory()) {
       files.push(...(await jsonFiles(full)));
     } else if (entry.name.endsWith(".json")) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+async function markdownFiles(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await markdownFiles(full)));
+    } else if (entry.name.endsWith(".md")) {
       files.push(full);
     }
   }
