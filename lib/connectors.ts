@@ -15,7 +15,10 @@ export const connectors = {
   codex: {
     id: "codex",
     output: "dist/codex/replayio",
-    artifacts: [{ source: ".app.json", destination: ".app.json" }],
+    artifacts: [
+      { source: ".app.json", destination: ".app.json" },
+      { source: ".mcp.json", destination: ".mcp.json" },
+    ],
   },
   cursor: {
     id: "cursor",
