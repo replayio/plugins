@@ -1,11 +1,25 @@
 ---
 name: "loop-qa-api"
-description: "Use when calling Replay Loop QA's REST API directly from an agent. Covers bearer-token setup, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, and explorations. This skill is instructions-only and does not use MCP, hooks, scripts, or app bindings."
+description: "Use when calling Replay Loop QA's REST API directly from an agent. Covers bearer-token setup, replayio skill prerequisite setup, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, and explorations. This skill is instructions-only and does not use MCP, hooks, scripts, or app bindings."
 ---
 
 # Loop QA API
 
 Use the Loop QA REST API directly. This plugin is skills-only: do not call MCP tools, app connectors, hooks, or bundled scripts for Loop QA work.
+
+## Replay.io Skill Prerequisite
+
+Before making any Loop QA API call, make sure the `replayio` skill in this same `.obvious/skills` bundle has been loaded and its setup has been applied for the current session.
+
+If the current session has not already completed `replayio` setup, load `../replayio/SKILL.md` first and follow it before continuing. In particular, verify:
+
+- `REPLAY_API_KEY` is mapped from `SECRET_REPLAY_API_KEY` when available.
+- `LOOP_QA_API_KEY` is mapped from `SECRET_LOOP_QA_API_KEY`.
+- `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium.
+- `AGENT_BROWSER_STREAM_PORT`, `RECORD_ALL_CONTENT`, and `RECORD_REPLAY_VERBOSE` are set.
+- Any Replay recording referenced by Loop QA has been uploaded or has a concrete recording UUID.
+
+Do not proceed with project creation or polling if this prerequisite is unknown. Load and apply the `replayio` skill first, then return to this skill.
 
 ## Authentication
 

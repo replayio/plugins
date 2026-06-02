@@ -1,9 +1,9 @@
 ---
-name: "obviously-env"
+name: "replayio"
 description: "Use when configuring an Obvious app-building environment for Replay recording through agent-browser. Covers Replay secrets, Replay Chromium, AGENT_BROWSER_EXECUTABLE_PATH, AGENT_BROWSER_STREAM_PORT, and recording flags. This skill is instructions-only and does not use MCP, hooks, scripts, or app bindings."
 ---
 
-# Obviously Env
+# Replay.io
 
 Configure the environment before starting `agent-browser` or opening an agent browser session. This plugin is skills-only: do not assume a hook, script, MCP server, or app binding will set anything for you.
 
