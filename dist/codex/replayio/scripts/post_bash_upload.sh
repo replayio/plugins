@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upload pending Replay recordings after a shell/Bash command closes a playwright-cli session.
+# Upload pending Replay recordings after a shell/Bash command closes a legacy Playwright CLI session.
 # Reads hook event JSON from stdin when the host provides it.
 
 set -euo pipefail

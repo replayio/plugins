@@ -84,8 +84,8 @@ function formatError(error) {
 }
 
 export const ReplayPlugin = async ({ client, $ }) => {
-  const pluginRoot = new URL("..", import.meta.url);
-  const pwcli = new URL("replayio/scripts/playwright_cli.sh", pluginRoot).pathname;
+  const replayChromium =
+    (process.env.HOME || "") + "/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium";
 
   await log(client, "info", "Replay.io OpenCode plugin initialized");
 
@@ -94,7 +94,7 @@ export const ReplayPlugin = async ({ client, $ }) => {
       output.env ??= {};
       output.env.RECORD_ALL_CONTENT ??= "1";
       output.env.RECORD_REPLAY_VERBOSE ??= "1";
-      output.env.PWCLI ??= pwcli;
+      output.env.AGENT_BROWSER_EXECUTABLE_PATH ??= replayChromium;
     },
 
     "tool.execute.after": async (input) => {

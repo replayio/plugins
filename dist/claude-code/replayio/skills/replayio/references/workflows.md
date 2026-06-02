@@ -1,38 +1,38 @@
-# Playwright CLI Workflows
+# Agent Browser Workflows
 
-Use the wrapper script and snapshot often. Assume `PWCLI` is set.
+Use the host agent browser with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`.
 
-## Standard interaction loop
-
-```bash
-"$PWCLI" open https://example.com
-"$PWCLI" snapshot
-"$PWCLI" click e3
-"$PWCLI" snapshot
-"$PWCLI" close
-```
-
-## Debugging and inspection
-
-Capture console messages and network activity after reproducing an issue:
+## Standard Interaction Loop
 
 ```bash
-mkdir -p output/playwright/debug
-"$PWCLI" snapshot
-"$PWCLI" console error
-"$PWCLI" console warning
-"$PWCLI" network
-"$PWCLI" screenshot output/playwright/debug/repro.png
+export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export RECORD_ALL_CONTENT='1'
+export RECORD_REPLAY_VERBOSE='1'
 ```
 
-For live browser state, use direct CLI commands first:
+Then drive the browser through the host browser API:
 
-```bash
-"$PWCLI" eval "location.href"
-"$PWCLI" eval "document.title"
-"$PWCLI" localstorage-list
-"$PWCLI" sessionstorage-list
-"$PWCLI" cookie-list
+1. Open the target URL in the agent browser.
+2. Take a DOM snapshot or screenshot.
+3. Interact with stable locators or visible UI.
+4. Re-snapshot after DOM changes or navigation.
+5. Close the tab/session when done.
+6. Run `replayio upload-all || replayio upload` if you need the Replay URL before reporting.
+
+## Debugging And Inspection
+
+Capture console messages and visual state after reproducing an issue. In Browser-plugin hosts:
+
+```js
+console.log(await tab.playwright.domSnapshot());
+console.log(await tab.dev.logs({ levels: ["error", "warn"], limit: 100 }));
+await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
+console.log(await tab.playwright.evaluate(() => ({
+  href: location.href,
+  title: document.title,
+  localStorage: { ...localStorage },
+  sessionStorage: { ...sessionStorage },
+})));
 ```
 
-Use Replay analysis tools only after the recording has uploaded and direct CLI output is not enough to explain the issue.
+Use Replay analysis tools only after the recording has uploaded and direct browser output is not enough to explain the issue.

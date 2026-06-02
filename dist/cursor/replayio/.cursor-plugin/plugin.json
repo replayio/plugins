@@ -2,7 +2,7 @@
   "name": "replayio",
   "displayName": "Replay.io",
   "version": "0.1.0",
-  "description": "Record browser sessions with the Replay Browser via Playwright CLI, analyze recordings through the Replay MCP server, and auto-upload recordings when the browser closes or the agent stops.",
+  "description": "Record browser sessions with the Replay Browser through the host agent browser, analyze recordings through the Replay MCP server, and upload pending recordings when the agent stops.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -12,6 +12,7 @@
   "license": "MIT",
   "keywords": [
     "replay",
+    "agent-browser",
     "playwright",
     "browser-automation",
     "time-travel-debugging",

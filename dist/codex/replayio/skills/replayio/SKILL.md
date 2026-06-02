@@ -1,86 +1,111 @@
 ---
 name: "replayio"
-description: "Use when you need to record or inspect a Playwright CLI browser run in Replay, test a local app directly with Playwright CLI, or use the connected Replay app for deeper debugging of an uploaded recording."
+description: "Use when you need to record or inspect an agent browser run in Replay, test a local app with the host agent browser using Replay Chromium, or use the Replay MCP server for deeper debugging of an uploaded recording."
 ---
 
-# Replay Browser + Playwright CLI + Replay App
+# Replay Browser + Agent Browser + Replay MCP
 
-Use `playwright-cli` with the Replay Browser whenever you need a recorded browser session. Recordings upload automatically — you do **not** need to run `replayio upload` yourself. Your only responsibility is to **close the browser when the test is complete**. The plugin's hooks handle the rest:
+Use the host **agent browser** with Replay Chromium whenever you need a recorded browser session. Do **not** drive the app with `playwright-cli` for normal browser work.
 
-- **Close hook**: when you run a `playwright-cli close`, pending recordings upload immediately.
-- **Stop/idle hook**: when your agent turn ends or idles, any still-open browser is closed and pending recordings upload as a safety net.
-
-Always prefer closing explicitly — it gives faster feedback and ensures recordings finish writing before you report results.
-
-## Direct CLI first
-
-Use `playwright-cli` directly for live browser control and first-pass inspection. Do not reach for the connected Replay app just to click, type, snapshot, read console output, inspect network requests, take screenshots, read storage, or check cookies.
-
-Use the connected Replay app only after a recording has uploaded and you need deeper Replay-specific debugging, such as inspecting execution history, narrowing a time-travel debugging problem, or investigating details that the live CLI cannot answer.
-
-Useful direct commands:
+Before opening the agent browser, point it at Replay Chromium:
 
 ```bash
-"$PWCLI" --session="$SESSION" snapshot
-"$PWCLI" --session="$SESSION" console
-"$PWCLI" --session="$SESSION" console error
-"$PWCLI" --session="$SESSION" network
-"$PWCLI" --session="$SESSION" screenshot output/playwright/$SESSION/page.png
-"$PWCLI" --session="$SESSION" eval "document.title"
-"$PWCLI" --session="$SESSION" localstorage-list
-"$PWCLI" --session="$SESSION" sessionstorage-list
-"$PWCLI" --session="$SESSION" cookie-list
+export AGENT_BROWSER_EXECUTABLE_PATH=/path/to/chromium
 ```
 
-## Close-when-done contract
-
-After you finish a test run, **before reporting the outcome to the user**, close the browser:
+For the standard Replay install on macOS, the executable is usually:
 
 ```bash
-"$PWCLI" --session="$SESSION" close
+export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
 ```
 
-Do not leave a browser open at the end of your turn. If you forget, the stop/idle hook will clean up, but you may not see the resulting Replay URL before responding.
+Recordings upload through the plugin's stop/idle hook as a safety net. If you need the Replay URL before reporting results, close the agent browser tab/session and force an upload with `replayio upload-all || replayio upload`.
 
-## The reliable path
+## Direct Agent Browser First
 
-1. Verify `npx` exists.
-2. Verify the Replay runtime exists and the CLI is logged in.
-3. Verify `.playwright/cli.config.json` points at the Replay Chromium binary.
+Use the host agent browser directly for live browser control and first-pass inspection. Do not reach for the Replay MCP server just to click, type, read DOM state, inspect console output, check network requests, take screenshots, read storage, or check cookies.
+
+Use the Replay MCP server only after a recording has uploaded and you need deeper Replay-specific debugging, such as inspecting execution history, narrowing a time-travel debugging problem, or investigating details that the live agent browser cannot answer.
+
+In Browser-plugin hosts, follow the Browser skill and use the selected `iab` browser. Typical direct checks look like this:
+
+```js
+await browser.nameSession("replay repro");
+if (typeof tab === "undefined") {
+  globalThis.tab = await browser.tabs.new();
+}
+await tab.goto(URL);
+console.log(await tab.playwright.domSnapshot());
+console.log(await tab.title());
+console.log(await tab.url());
+console.log(await tab.dev.logs({ levels: ["error"], limit: 50 }));
+await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
+```
+
+Use the browser API's Playwright/DOM/vision helpers for interaction; the key restriction is to avoid the external `playwright-cli` path.
+
+## Close-When-Done Contract
+
+After you finish a test run, **before reporting the outcome to the user**, close the agent browser tab or session using the host browser API.
+
+In Browser-plugin hosts:
+
+```js
+await tab.close();
+```
+
+Then, if you need the uploaded Replay URL before your response, run:
+
+```bash
+replayio upload-all || replayio upload
+```
+
+Do not leave a browser open at the end of your turn. If you forget, the stop/idle hook will attempt to upload pending recordings as a safety net, but you may not see the resulting Replay URL before responding.
+
+**Exception - authentication wall:** If you must stop because the user needs to sign in interactively (see below), **do not** close the browser just to retry or reset. Leaving the session open preserves the headed window they should use; closing can end the recording before login is done.
+
+## Web App Authentication Walls
+
+If you hit a **login or authorization barrier** you cannot complete with automation alone - for example a sign-in page, SSO redirect, MFA step, CAPTCHA, or consent screen - **do not** close the browser and loop on reopen/retry. That drops useful context and trains failing retries.
+
+Instead:
+
+1. **Stop driving the browser** for this turn.
+2. Briefly report what blocked you (URL or visible state).
+3. Ask the user to complete sign-in **in the existing headed browser session** when that is possible (or give them the exact URL if they must use another window).
+4. Ask them to **send another message when they are logged in** so you can attach to the same session or continue from an authenticated page.
+5. End your turn there; resume only after they confirm.
+
+Do not treat an auth wall as a generic error to brute-force by closing and reopening the Replay browser.
+
+## The Reliable Path
+
+1. Verify the Replay runtime exists and the CLI is logged in.
+2. Resolve the Replay Chromium executable path.
+3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
 4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
 5. If testing a local app, start it first and verify the actual reachable URL.
-6. Use `--session=<short-name>`, not `-s=...`.
-7. Keep session names short on macOS. Long names can fail with `listen EINVAL ... .sock`.
-8. Drive and inspect the page directly with `playwright-cli` commands.
-9. Close the browser with `"$PWCLI" --session="$SESSION" close` when done — uploads happen automatically.
+6. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
+7. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
+8. Close the agent browser tab/session when done.
+9. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
 
 ## Prerequisites
 
-Check `npx` first:
-
-```bash
-command -v npx >/dev/null 2>&1
-```
-
-If missing, stop and ask the user to install Node.js/npm.
-
-## Replay MCP authentication (private recordings)
-
-Replay MCP calls are authorized **per user**. If tools return **Access denied**, you are usually not authenticated to Replay **as the same account that owns the recording**.
-
-- **Cursor**: open **Settings → MCP**, select the **Replay** server, and complete **Sign in / Connect / Reconnect** so Cursor can finish the **OAuth** flow (including **dynamic client registration** when supported). Stay on `https://dispatch.replay.io/mcp` (do not swap in unrelated endpoints unless Replay explicitly instructs you to).
-- **Other hosts**: follow that host’s MCP authentication mechanism (some environments use API keys or separate app connectors instead of OAuth).
-
-## Replay setup
-
-Do not blindly reinstall Replay on every run. Verify first.
+Check Replay first:
 
 ```bash
 replayio info
 replayio whoami
 ```
 
-If Replay is missing, install it:
+If Replay is missing, verify `npx` exists:
+
+```bash
+command -v npx >/dev/null 2>&1
+```
+
+If `npx` is missing, stop and ask the user to install Node.js/npm. If `npx` exists, install Replay:
 
 ```bash
 npx @replayio/replay install
@@ -92,35 +117,41 @@ If not logged in, authenticate:
 replayio login
 ```
 
-## Playwright CLI config
+## Replay MCP Authentication (Private Recordings)
 
-`playwright-cli` should use the Replay Browser through `.playwright/cli.config.json`:
+Replay MCP calls are authorized **per user**. If tools return **Access denied**, you are usually not authenticated to Replay **as the same account that owns the recording**.
 
-```json
-{
-  "browser": {
-    "launchOptions": {
-      "executablePath": "/Users/YOURUSERNAME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
-    }
-  }
-}
+- **Cursor**: open **Settings -> MCP**, select the **Replay** server, and complete **Sign in / Connect / Reconnect** so Cursor can finish the **OAuth** flow (including **dynamic client registration** when supported). Stay on `https://dispatch.replay.io/mcp` (do not swap in unrelated endpoints unless Replay explicitly instructs you to).
+- **Other hosts**: follow that host's MCP authentication mechanism (some environments use API keys or separate app connectors instead of OAuth).
+
+## Agent Browser Executable Path
+
+The agent browser should launch Replay Chromium through `AGENT_BROWSER_EXECUTABLE_PATH`:
+
+```bash
+export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
 ```
 
-Do not rely on a global `--executable-path` flag — the config file is the reliable way to select Replay Chromium.
+Verify the executable exists before browser work:
 
-## Skill path
+```bash
+test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
+```
 
-The plugin ships a wrapper script so you can invoke `playwright-cli` without a global install:
+Do not configure `.playwright/cli.config.json` for normal runs, and do not switch back to `playwright-cli` just to select the browser executable. If the agent browser was already running before the environment variable was set, restart or reconnect the agent browser so it picks up the Replay Chromium path.
+
+## Recording Environment
+
+Set recording flags before the run:
 
 ```bash
 export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
-export PWCLI="${CLAUDE_PLUGIN_ROOT:-$PWD/dist/codex/replayio}/skills/replayio/scripts/playwright_cli.sh"
 ```
 
-If the plugin root environment variable is not set, run from the generated plugin repo root or point `PWCLI` at the Replay plugin checkout.
+Some hosts or hooks may set these automatically. If in doubt, set them explicitly before opening the agent browser.
 
-## Local app check
+## Local App Check
 
 If testing a local app:
 
@@ -135,50 +166,63 @@ curl -I http://127.0.0.1:4323/todos
 
 If a localhost request fails even though a process is clearly listening, you may be in a restricted sandbox. Rerun the browser and reachability checks outside the sandbox.
 
-## Reliable session workflow
+## Reliable Agent Browser Workflow
 
 ```bash
-SESSION=rt
-URL=http://127.0.0.1:4323/todos
-mkdir -p "output/playwright/$SESSION"
-
-"$PWCLI" --session="$SESSION" open "$URL" --headed --browser=chrome
-# wait for: Browser `rt` opened with pid ...
-
-"$PWCLI" --session="$SESSION" snapshot
-"$PWCLI" --session="$SESSION" fill e6 "Buy milk"
-"$PWCLI" --session="$SESSION" click e7
-"$PWCLI" --session="$SESSION" snapshot
-"$PWCLI" --session="$SESSION" console error
-"$PWCLI" --session="$SESSION" screenshot output/playwright/$SESSION/after-add.png
-
-# When the test is complete, close the browser.
-# The upload hook will upload the recording automatically.
-"$PWCLI" --session="$SESSION" close
+export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export RECORD_ALL_CONTENT='1'
+export RECORD_REPLAY_VERBOSE='1'
 ```
 
-Use `snapshot` before using element refs, and again after DOM changes or navigation.
+Then use the host agent browser. In Browser-plugin hosts:
 
-## Attach to an already-open browser
+```js
+const URL = "http://127.0.0.1:4323/todos";
+await browser.nameSession("replay todos");
+if (typeof tab === "undefined") {
+  globalThis.tab = await browser.tabs.new();
+}
+await tab.goto(URL);
+console.log(await tab.playwright.domSnapshot());
+await tab.playwright.getByLabel("New todo", { exact: false }).fill("Buy milk", {});
+await tab.playwright.getByRole("button", { name: "Add" }).click({});
+console.log(await tab.playwright.domSnapshot());
+console.log(await tab.dev.logs({ levels: ["error"], limit: 50 }));
+await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
+await tab.close();
+```
 
-If the browser is already running:
+Use `domSnapshot()` before constructing locators, and again after DOM changes or navigation.
+
+## Attach To An Already-Open Agent Browser
+
+If the agent browser is already running, attach through the host browser API instead of starting a new CLI session.
+
+In Browser-plugin hosts:
+
+```js
+const tabs = await browser.tabs.list();
+console.log(tabs);
+globalThis.tab = tabs.length > 0 ? await browser.tabs.get(tabs[0].id) : await browser.tabs.new();
+```
+
+## Analyzing Uploaded Recordings
+
+First inspect the live run with direct agent-browser APIs. Once a recording has uploaded, use the `replay` MCP server tools only when you need deeper Replay-specific debugging beyond direct browser output. Codex connects to the Replay HTTP MCP server configured in `.mcp.json`; the connected Replay app id remains available in `.app.json` for app-level authentication and compatibility.
+
+## Replay MCP Widgets
+
+Replay MCP tool calls may return both text `content` for the model and `structuredContent` for an MCP Apps widget. In MCP Apps-aware hosts, prefer the rendered widget for dense debugging views such as Logpoint output, React component trees, Redux actions, network details, screenshots, source code, profiles, and exception stacks.
+
+When a widget is visible, use it as evidence instead of restating every detail in prose. Use follow-up actions or related Replay MCP tools when the widget points to a specific point, source, component, request, or stack frame that needs deeper inspection.
+
+## Recording Uploads
+
+The plugin's stop/idle hook attempts to upload pending Replay recordings automatically at the end of the turn. Because agent-browser interactions do not necessarily run through a shell close command, force an upload yourself when you need the Replay URL before reporting results:
 
 ```bash
-"$PWCLI" list
-"$PWCLI" attach rt --session=rt1
-"$PWCLI" --session=rt1 snapshot
+replayio upload-all || replayio upload
 ```
-
-## Analyzing uploaded recordings
-
-First inspect the live run with direct `playwright-cli` commands. Once a recording has uploaded, use the connected Replay app tools only when you need deeper Replay-specific debugging beyond direct CLI output. This plugin does not launch a local MCP server; app authentication and tool exposure are handled by the connected Replay app.
-
-## Recording uploads are automatic
-
-You do **not** need to run `replayio list` or `replayio upload <id>` manually. The plugin's hooks handle uploads:
-
-- When you close a session (`"$PWCLI" --session=... close`), the close hook uploads any new recordings.
-- When your turn ends or idles with a browser still open, the stop/idle hook closes the session and uploads.
 
 If you need to inspect the upload state yourself:
 
@@ -188,18 +232,17 @@ replayio list
 
 ## Troubleshooting
 
-- If `open` appears stuck, wait for the browser-opened output before sending the next command.
-- If `snapshot` says the browser is not open, retry with `--session=<name>` instead of `-s=...`.
-- If you see `listen EINVAL ... .sock`, shorten the session name.
+- If the agent browser does not record, verify `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium and restart/reconnect the agent browser after setting it.
+- If `test -x "$AGENT_BROWSER_EXECUTABLE_PATH"` fails, run `npx @replayio/replay install` or fix the path.
+- If no Replay URL is available before you respond, close the agent browser tab/session and run `replayio upload-all || replayio upload`.
 - If the app is on localhost, verify the exact URL with `curl -I` before opening the browser.
 - If the requested port was busy, use the actual port printed by the dev server.
-- If a browser exists but your commands are detached, use `list` then `attach`.
-- Prefer explicit commands like `fill`, `click`, `check`, and `press` over `eval` or `run-code`.
-- Prefer direct CLI inspection (`console`, `network`, `screenshot`, storage, cookies, `eval`) before using the connected Replay app.
+- Prefer direct agent-browser inspection (DOM snapshots, console logs, screenshots, storage, cookies, network tools when available) before using the Replay MCP server.
 - If Replay authentication fails, run `replayio login` or reconnect the relevant Replay app/integration.
+- If the **application under test** requires interactive login, follow **Web App Authentication Walls** - do not close-and-retry the browser session in a loop.
 
 ## References
 
-- CLI command reference: `references/cli.md`
+- Agent browser reference: `references/cli.md`
 - Workflow notes: `references/workflows.md`
 - [Replay docs](https://docs.replay.io)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Close lingering playwright-cli browser sessions and upload pending Replay recordings.
+# Close lingering legacy Playwright CLI browser sessions and upload pending Replay recordings.
 
 set -euo pipefail
 
