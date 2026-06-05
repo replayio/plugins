@@ -1,0 +1,252 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "replayio-agent-harness-plugins",
+  "homepage": "https://github.com/replayio/agent-harness-plugins",
+  "items": [
+    {
+      "name": "codex",
+      "type": "registry:item",
+      "title": "Replay.io Codex Plugin",
+      "description": "Codex plugin bundle for recording agent browser sessions with Replay Chromium and inspecting recordings through Replay MCP.",
+      "files": [
+        {
+          "path": "dist/codex/replayio/.app.json",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/.app.json"
+        },
+        {
+          "path": "dist/codex/replayio/.codex-plugin/plugin.json",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/.codex-plugin/plugin.json"
+        },
+        {
+          "path": "dist/codex/replayio/.mcp.json",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/.mcp.json"
+        },
+        {
+          "path": "dist/codex/replayio/LICENSE",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/LICENSE"
+        },
+        {
+          "path": "dist/codex/replayio/README.md",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/README.md"
+        },
+        {
+          "path": "dist/codex/replayio/assets/replayio.svg",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/assets/replayio.svg"
+        },
+        {
+          "path": "dist/codex/replayio/hooks.json",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/hooks.json"
+        },
+        {
+          "path": "dist/codex/replayio/scripts/post_bash_upload.sh",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/scripts/post_bash_upload.sh"
+        },
+        {
+          "path": "dist/codex/replayio/scripts/stop_close_and_upload.sh",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/scripts/stop_close_and_upload.sh"
+        },
+        {
+          "path": "dist/codex/replayio/skills/replayio/SKILL.md",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/skills/replayio/SKILL.md"
+        },
+        {
+          "path": "dist/codex/replayio/skills/replayio/references/cli.md",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/skills/replayio/references/cli.md"
+        },
+        {
+          "path": "dist/codex/replayio/skills/replayio/references/workflows.md",
+          "type": "registry:file",
+          "target": "~/dist/codex/replayio/skills/replayio/references/workflows.md"
+        }
+      ]
+    },
+    {
+      "name": "cursor",
+      "type": "registry:item",
+      "title": "Replay.io Cursor Plugin",
+      "description": "Cursor plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, and agent skill guidance.",
+      "files": [
+        {
+          "path": "dist/cursor/replayio/.cursor-plugin/plugin.json",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/.cursor-plugin/plugin.json"
+        },
+        {
+          "path": "dist/cursor/replayio/LICENSE",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/LICENSE"
+        },
+        {
+          "path": "dist/cursor/replayio/README.md",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/README.md"
+        },
+        {
+          "path": "dist/cursor/replayio/assets/replayio.svg",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/assets/replayio.svg"
+        },
+        {
+          "path": "dist/cursor/replayio/hooks/hooks.json",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/hooks/hooks.json"
+        },
+        {
+          "path": "dist/cursor/replayio/mcp.json",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/mcp.json"
+        },
+        {
+          "path": "dist/cursor/replayio/scripts/post_bash_upload.sh",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/scripts/post_bash_upload.sh"
+        },
+        {
+          "path": "dist/cursor/replayio/scripts/stop_close_and_upload.sh",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/scripts/stop_close_and_upload.sh"
+        },
+        {
+          "path": "dist/cursor/replayio/skills/replayio/SKILL.md",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/skills/replayio/SKILL.md"
+        },
+        {
+          "path": "dist/cursor/replayio/skills/replayio/references/cli.md",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/skills/replayio/references/cli.md"
+        },
+        {
+          "path": "dist/cursor/replayio/skills/replayio/references/workflows.md",
+          "type": "registry:file",
+          "target": "~/dist/cursor/replayio/skills/replayio/references/workflows.md"
+        }
+      ]
+    },
+    {
+      "name": "claude-code",
+      "type": "registry:item",
+      "title": "Replay.io Claude Code Plugin",
+      "description": "Claude Code plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, and agent skill guidance.",
+      "files": [
+        {
+          "path": "dist/claude-code/replayio/.claude-plugin/plugin.json",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/.claude-plugin/plugin.json"
+        },
+        {
+          "path": "dist/claude-code/replayio/.mcp.json",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/.mcp.json"
+        },
+        {
+          "path": "dist/claude-code/replayio/LICENSE",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/LICENSE"
+        },
+        {
+          "path": "dist/claude-code/replayio/README.md",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/README.md"
+        },
+        {
+          "path": "dist/claude-code/replayio/assets/replayio.svg",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/assets/replayio.svg"
+        },
+        {
+          "path": "dist/claude-code/replayio/hooks/hooks.json",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/hooks/hooks.json"
+        },
+        {
+          "path": "dist/claude-code/replayio/scripts/post_bash_upload.sh",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/scripts/post_bash_upload.sh"
+        },
+        {
+          "path": "dist/claude-code/replayio/scripts/stop_close_and_upload.sh",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/scripts/stop_close_and_upload.sh"
+        },
+        {
+          "path": "dist/claude-code/replayio/skills/replayio/SKILL.md",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/skills/replayio/SKILL.md"
+        },
+        {
+          "path": "dist/claude-code/replayio/skills/replayio/references/cli.md",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/skills/replayio/references/cli.md"
+        },
+        {
+          "path": "dist/claude-code/replayio/skills/replayio/references/workflows.md",
+          "type": "registry:file",
+          "target": "~/dist/claude-code/replayio/skills/replayio/references/workflows.md"
+        }
+      ]
+    },
+    {
+      "name": "opencode",
+      "type": "registry:item",
+      "title": "Replay.io OpenCode Plugin",
+      "description": "OpenCode plugin bundle with Replay MCP config, Replay workflow guidance, and OpenCode hooks.",
+      "files": [
+        {
+          "path": "dist/opencode/replayio/.opencode/plugins/replayio.js",
+          "type": "registry:file",
+          "target": "~/dist/opencode/replayio/.opencode/plugins/replayio.js"
+        },
+        {
+          "path": "dist/opencode/replayio/AGENTS.md",
+          "type": "registry:file",
+          "target": "~/dist/opencode/replayio/AGENTS.md"
+        },
+        {
+          "path": "dist/opencode/replayio/README.md",
+          "type": "registry:file",
+          "target": "~/dist/opencode/replayio/README.md"
+        },
+        {
+          "path": "dist/opencode/replayio/opencode.json",
+          "type": "registry:file",
+          "target": "~/dist/opencode/replayio/opencode.json"
+        }
+      ]
+    },
+    {
+      "name": "obviously",
+      "type": "registry:item",
+      "title": "Replay.io Obvious Skills",
+      "description": "Skills-only Obvious bundle with Replay setup, Loop QA API guidance, and agent-browser streaming guidance.",
+      "files": [
+        {
+          "path": "dist/obviously/.obvious/skills/agent-browser-streaming/SKILL.md",
+          "type": "registry:file",
+          "target": "~/dist/obviously/.obvious/skills/agent-browser-streaming/SKILL.md"
+        },
+        {
+          "path": "dist/obviously/.obvious/skills/loop-qa-api/SKILL.md",
+          "type": "registry:file",
+          "target": "~/dist/obviously/.obvious/skills/loop-qa-api/SKILL.md"
+        },
+        {
+          "path": "dist/obviously/.obvious/skills/replayio/SKILL.md",
+          "type": "registry:file",
+          "target": "~/dist/obviously/.obvious/skills/replayio/SKILL.md"
+        }
+      ]
+    }
+  ]
+}
