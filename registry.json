@@ -12,62 +12,62 @@
         {
           "path": "dist/codex/replayio/.app.json",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/.app.json"
+          "target": "~/.app.json"
         },
         {
           "path": "dist/codex/replayio/.codex-plugin/plugin.json",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/.codex-plugin/plugin.json"
+          "target": "~/.codex-plugin/plugin.json"
         },
         {
           "path": "dist/codex/replayio/.mcp.json",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/.mcp.json"
+          "target": "~/.mcp.json"
         },
         {
           "path": "dist/codex/replayio/LICENSE",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/LICENSE"
+          "target": "~/LICENSE"
         },
         {
           "path": "dist/codex/replayio/README.md",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/README.md"
+          "target": "~/README.md"
         },
         {
           "path": "dist/codex/replayio/assets/replayio.svg",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/assets/replayio.svg"
+          "target": "~/assets/replayio.svg"
         },
         {
           "path": "dist/codex/replayio/hooks.json",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/hooks.json"
+          "target": "~/hooks.json"
         },
         {
           "path": "dist/codex/replayio/scripts/post_bash_upload.sh",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/scripts/post_bash_upload.sh"
+          "target": "~/scripts/post_bash_upload.sh"
         },
         {
           "path": "dist/codex/replayio/scripts/stop_close_and_upload.sh",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/scripts/stop_close_and_upload.sh"
+          "target": "~/scripts/stop_close_and_upload.sh"
         },
         {
           "path": "dist/codex/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/skills/replayio/SKILL.md"
+          "target": "~/skills/replayio/SKILL.md"
         },
         {
           "path": "dist/codex/replayio/skills/replayio/references/cli.md",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/skills/replayio/references/cli.md"
+          "target": "~/skills/replayio/references/cli.md"
         },
         {
           "path": "dist/codex/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
-          "target": "~/dist/codex/replayio/skills/replayio/references/workflows.md"
+          "target": "~/skills/replayio/references/workflows.md"
         }
       ]
     },
@@ -80,57 +80,57 @@
         {
           "path": "dist/cursor/replayio/.cursor-plugin/plugin.json",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/.cursor-plugin/plugin.json"
+          "target": "~/.cursor-plugin/plugin.json"
         },
         {
           "path": "dist/cursor/replayio/LICENSE",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/LICENSE"
+          "target": "~/LICENSE"
         },
         {
           "path": "dist/cursor/replayio/README.md",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/README.md"
+          "target": "~/README.md"
         },
         {
           "path": "dist/cursor/replayio/assets/replayio.svg",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/assets/replayio.svg"
+          "target": "~/assets/replayio.svg"
         },
         {
           "path": "dist/cursor/replayio/hooks/hooks.json",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/hooks/hooks.json"
+          "target": "~/hooks/hooks.json"
         },
         {
           "path": "dist/cursor/replayio/mcp.json",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/mcp.json"
+          "target": "~/mcp.json"
         },
         {
           "path": "dist/cursor/replayio/scripts/post_bash_upload.sh",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/scripts/post_bash_upload.sh"
+          "target": "~/scripts/post_bash_upload.sh"
         },
         {
           "path": "dist/cursor/replayio/scripts/stop_close_and_upload.sh",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/scripts/stop_close_and_upload.sh"
+          "target": "~/scripts/stop_close_and_upload.sh"
         },
         {
           "path": "dist/cursor/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/skills/replayio/SKILL.md"
+          "target": "~/skills/replayio/SKILL.md"
         },
         {
           "path": "dist/cursor/replayio/skills/replayio/references/cli.md",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/skills/replayio/references/cli.md"
+          "target": "~/skills/replayio/references/cli.md"
         },
         {
           "path": "dist/cursor/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
-          "target": "~/dist/cursor/replayio/skills/replayio/references/workflows.md"
+          "target": "~/skills/replayio/references/workflows.md"
         }
       ]
     },
@@ -143,57 +143,57 @@
         {
           "path": "dist/claude-code/replayio/.claude-plugin/plugin.json",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/.claude-plugin/plugin.json"
+          "target": "~/.claude-plugin/plugin.json"
         },
         {
           "path": "dist/claude-code/replayio/.mcp.json",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/.mcp.json"
+          "target": "~/.mcp.json"
         },
         {
           "path": "dist/claude-code/replayio/LICENSE",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/LICENSE"
+          "target": "~/LICENSE"
         },
         {
           "path": "dist/claude-code/replayio/README.md",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/README.md"
+          "target": "~/README.md"
         },
         {
           "path": "dist/claude-code/replayio/assets/replayio.svg",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/assets/replayio.svg"
+          "target": "~/assets/replayio.svg"
         },
         {
           "path": "dist/claude-code/replayio/hooks/hooks.json",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/hooks/hooks.json"
+          "target": "~/hooks/hooks.json"
         },
         {
           "path": "dist/claude-code/replayio/scripts/post_bash_upload.sh",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/scripts/post_bash_upload.sh"
+          "target": "~/scripts/post_bash_upload.sh"
         },
         {
           "path": "dist/claude-code/replayio/scripts/stop_close_and_upload.sh",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/scripts/stop_close_and_upload.sh"
+          "target": "~/scripts/stop_close_and_upload.sh"
         },
         {
           "path": "dist/claude-code/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/skills/replayio/SKILL.md"
+          "target": "~/skills/replayio/SKILL.md"
         },
         {
           "path": "dist/claude-code/replayio/skills/replayio/references/cli.md",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/skills/replayio/references/cli.md"
+          "target": "~/skills/replayio/references/cli.md"
         },
         {
           "path": "dist/claude-code/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
-          "target": "~/dist/claude-code/replayio/skills/replayio/references/workflows.md"
+          "target": "~/skills/replayio/references/workflows.md"
         }
       ]
     },
@@ -206,22 +206,22 @@
         {
           "path": "dist/opencode/replayio/.opencode/plugins/replayio.js",
           "type": "registry:file",
-          "target": "~/dist/opencode/replayio/.opencode/plugins/replayio.js"
+          "target": "~/.opencode/plugins/replayio.js"
         },
         {
           "path": "dist/opencode/replayio/AGENTS.md",
           "type": "registry:file",
-          "target": "~/dist/opencode/replayio/AGENTS.md"
+          "target": "~/AGENTS.md"
         },
         {
           "path": "dist/opencode/replayio/README.md",
           "type": "registry:file",
-          "target": "~/dist/opencode/replayio/README.md"
+          "target": "~/README.md"
         },
         {
           "path": "dist/opencode/replayio/opencode.json",
           "type": "registry:file",
-          "target": "~/dist/opencode/replayio/opencode.json"
+          "target": "~/opencode.json"
         }
       ]
     },

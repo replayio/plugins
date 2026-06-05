@@ -16,13 +16,13 @@ npx shadcn@latest add replayio/plugins/obviously
 
 | Item | Installs |
 | --- | --- |
-| `codex` | Codex plugin bundle with Replay MCP, Replay skill, hooks, scripts, and app metadata. |
-| `cursor` | Cursor plugin bundle with Replay MCP, Replay skill, hooks, scripts, and plugin metadata. |
-| `claude-code` | Claude Code plugin bundle with Replay MCP, Replay skill, hooks, scripts, and plugin metadata. |
-| `opencode` | OpenCode plugin bundle with Replay MCP config, workflow guidance, and OpenCode hooks. |
+| `codex` | Codex plugin bundle installed to `.codex-plugin/`, `skills/`, `assets/`, hooks, scripts, and metadata files. |
+| `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
+| `claude-code` | Claude Code plugin bundle installed to `.claude-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
+| `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, `README.md`, and `opencode.json`. |
 | `obviously` | Skills-only Obvious bundle installed to `.obvious/skills/...`. |
 
-The Codex, Cursor, Claude Code, and OpenCode items write their generated bundles under matching `dist/...` paths. The Obvious item writes directly to `.obvious/skills/...`.
+The registry reads generated source files from `dist/...`, but each item installs into the platform-specific destination paths that plugin hosts expect.
 
 ## Validate
 
