@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
-  "name": "replayio-agent-harness-plugins",
-  "homepage": "https://github.com/replayio/agent-harness-plugins",
+  "name": "replayio-plugins",
+  "homepage": "https://github.com/replayio/plugins",
   "items": [
     {
       "name": "codex",
