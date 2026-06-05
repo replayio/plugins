@@ -20,9 +20,9 @@ npx shadcn@latest add replayio/plugins/obviously
 | `cursor` | Cursor plugin bundle with Replay MCP, Replay skill, hooks, scripts, and plugin metadata. |
 | `claude-code` | Claude Code plugin bundle with Replay MCP, Replay skill, hooks, scripts, and plugin metadata. |
 | `opencode` | OpenCode plugin bundle with Replay MCP config, workflow guidance, and OpenCode hooks. |
-| `obviously` | Skills-only Obvious bundle with Replay setup, Loop QA API, and agent-browser streaming guidance. |
+| `obviously` | Skills-only Obvious bundle installed to `.obvious/skills/...`. |
 
-Each item writes its generated bundle under the matching `dist/...` path in the project where you run `shadcn add`.
+The Codex, Cursor, Claude Code, and OpenCode items write their generated bundles under matching `dist/...` paths. The Obvious item writes directly to `.obvious/skills/...`.
 
 ## Validate
 

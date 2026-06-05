@@ -234,17 +234,17 @@
         {
           "path": "dist/obviously/.obvious/skills/agent-browser-streaming/SKILL.md",
           "type": "registry:file",
-          "target": "~/dist/obviously/.obvious/skills/agent-browser-streaming/SKILL.md"
+          "target": "~/.obvious/skills/agent-browser-streaming/SKILL.md"
         },
         {
           "path": "dist/obviously/.obvious/skills/loop-qa-api/SKILL.md",
           "type": "registry:file",
-          "target": "~/dist/obviously/.obvious/skills/loop-qa-api/SKILL.md"
+          "target": "~/.obvious/skills/loop-qa-api/SKILL.md"
         },
         {
           "path": "dist/obviously/.obvious/skills/replayio/SKILL.md",
           "type": "registry:file",
-          "target": "~/dist/obviously/.obvious/skills/replayio/SKILL.md"
+          "target": "~/.obvious/skills/replayio/SKILL.md"
         }
       ]
     }
