@@ -20,6 +20,27 @@ If setup is unknown, load `../replayio/SKILL.md` first and follow it before cont
 
 Do not proceed with Loop QA handoff if this prerequisite is unknown. Load and apply the `replayio` skill first, then return to this skill.
 
+## Project Config Reuse
+
+Before creating or selecting a Loop QA project, inspect the current project root for `.replay/config.json`.
+
+Resolve the project root with `git rev-parse --show-toplevel` when the working directory is inside a git repo; otherwise use the current working directory. Then:
+
+1. If `.replay/config.json` exists and contains a non-empty string property named `"qa-project-id"`, reuse that project ID for all Loop QA work in this project from that point on.
+2. Do not call `create_project` when a valid `"qa-project-id"` already exists unless the user explicitly asks for a new Loop QA project or the existing project is proven invalid for the current account.
+3. If `.replay/config.json` is missing, invalid, or does not contain `"qa-project-id"`, use the Loop QA MCP `create_project` tool to create a project.
+4. After `create_project` returns the project ID, create or update `.replay/config.json` so future runs can reuse it:
+
+```json
+{
+  "qa-project-id": "projectId"
+}
+```
+
+Preserve any unrelated keys already present in `.replay/config.json`. Create the `.replay/` directory if needed. Keep the file valid JSON. Do not overwrite an existing `"qa-project-id"` with a different ID without user confirmation.
+
+When reporting Loop QA setup, say whether the project ID was reused from `.replay/config.json` or created with `create_project` and written back to the config file.
+
 ## Authentication
 
 Prefer the Replay MCP OAuth token/session. If Claude Code or the MCP host exposes the Replay OAuth access token through an approved mechanism, reuse it for first-party web handoff links instead of asking for a separate Loop QA API key.
@@ -64,7 +85,7 @@ Capture:
 - Test source URL when available.
 - Instructions for the analysis, including what the user expects Loop QA to answer.
 
-Prefer a Replay MCP tool or first-party Loop QA/dashboard UI for creating or opening the Loop QA project. If no MCP tool or browser workflow is available to create the project, give the user the authenticated Replay dashboard link and the exact instructions to paste into Loop QA.
+Prefer the project ID from `.replay/config.json`. If none exists, use the Loop QA MCP `create_project` tool, then write the returned project ID to `.replay/config.json`. If no MCP tool or browser workflow is available to create the project, give the user the authenticated Replay dashboard link and the exact instructions to paste into Loop QA.
 
 When a Loop QA project ID or URL is available, provide the Loop QA overview link. Add `#access_token=` only when the OAuth token is available from the MCP/host session.
 
@@ -100,7 +121,7 @@ Capture:
 - Exploration goals, expected behavior, and important user flows.
 - Related Replay recording IDs, backend recording URLs, backend log URLs, or design documents when available.
 
-Prefer browser/UI or Replay MCP-supported project creation over direct REST calls. If creation is not available from the current tools, provide a concise handoff: target URL, instructions, and the authenticated Loop QA link when available.
+Prefer the project ID from `.replay/config.json`. If none exists, use the Loop QA MCP `create_project` tool, then write the returned project ID to `.replay/config.json`. If creation is not available from the current tools, provide a concise handoff: target URL, instructions, and the authenticated Loop QA link when available.
 
 ## Project Status And Evidence
 
@@ -139,6 +160,7 @@ Do not infer a root cause from source reading while Loop QA analysis is still pe
 When reporting Loop QA work, include:
 
 - Project ID and URL, if returned.
+- Whether the project ID was reused from `.replay/config.json` or created and written there.
 - Recording ID or target URL analyzed.
 - Status summary.
 - Bug count and each bug ID inspected.

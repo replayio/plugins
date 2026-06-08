@@ -85,12 +85,13 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
 4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
 5. If Loop QA will be used, make sure Replay MCP OAuth is connected for the same Replay account and reuse that session context for dashboard or Loop QA handoff links when available.
-6. If Loop QA will explore a local app, expose it on a public HTTPS URL first; Loop QA runs outside the user's machine and cannot reach `localhost`, `127.0.0.1`, private LAN, or VPN-only URLs.
-7. If testing a local app directly with the agent browser, start it first and verify the actual reachable URL.
-8. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
-9. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-10. Close the agent browser tab/session when done.
-11. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
+6. If Loop QA will be used, check the project-root `.replay/config.json` for an existing `"qa-project-id"` before creating any new Loop QA project.
+7. If Loop QA will explore a local app, expose it on a public HTTPS URL first; Loop QA runs outside the user's machine and cannot reach `localhost`, `127.0.0.1`, private LAN, or VPN-only URLs.
+8. If testing a local app directly with the agent browser, start it first and verify the actual reachable URL.
+9. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
+10. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
+11. Close the agent browser tab/session when done.
+12. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
 
 ## Prerequisites
 
