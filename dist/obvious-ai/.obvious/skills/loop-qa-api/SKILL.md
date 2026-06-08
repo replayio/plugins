@@ -74,7 +74,7 @@ curl -sS -X POST "$LOOP_QA_BASE_URL/projects" \
 
 Save the returned project `id` and project `url` if present.
 
-IMPORTANT: whenever you recieve a project id you should create a obviously iframe artifact which points to https://loop-qa.replay.io/p/:projectId/overview
+IMPORTANT: whenever you recieve a project id you should create an obvious-ai iframe artifact which points to https://loop-qa.replay.io/p/:projectId/overview
 
 ## Create A Project For Live App Exploration
 

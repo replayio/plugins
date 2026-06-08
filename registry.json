@@ -236,23 +236,23 @@
       ]
     },
     {
-      "name": "obviously",
+      "name": "obvious-ai",
       "type": "registry:item",
       "title": "Replay.io Obvious Skills",
       "description": "Skills-only Obvious bundle with Replay setup, Loop QA API guidance, and agent-browser streaming guidance.",
       "files": [
         {
-          "path": "dist/obviously/.obvious/skills/agent-browser-streaming/SKILL.md",
+          "path": "dist/obvious-ai/.obvious/skills/agent-browser-streaming/SKILL.md",
           "type": "registry:file",
           "target": "~/.obvious/skills/agent-browser-streaming/SKILL.md"
         },
         {
-          "path": "dist/obviously/.obvious/skills/loop-qa-api/SKILL.md",
+          "path": "dist/obvious-ai/.obvious/skills/loop-qa-api/SKILL.md",
           "type": "registry:file",
           "target": "~/.obvious/skills/loop-qa-api/SKILL.md"
         },
         {
-          "path": "dist/obviously/.obvious/skills/replayio/SKILL.md",
+          "path": "dist/obvious-ai/.obvious/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/.obvious/skills/replayio/SKILL.md"
         }
