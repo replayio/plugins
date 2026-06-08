@@ -134,6 +134,7 @@
       "type": "registry:item",
       "title": "Replay.io Claude Code Plugin",
       "description": "Claude Code plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, and agent skill guidance.",
+      "docs": "After installing, start Claude Code from the project root. The plugin should load automatically from `.claude/skills/replayio`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replayio\n```",
       "files": [
         {
           "path": "dist/claude-code/replayio/.claude-plugin/plugin.json",
