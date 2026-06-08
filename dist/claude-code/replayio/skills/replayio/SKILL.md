@@ -84,7 +84,7 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 2. Resolve the Replay Chromium executable path.
 3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
 4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
-5. If Loop QA will be used, map `LOOP_QA_API_KEY` from `SECRET_LOOP_QA_API_KEY` when available.
+5. If Loop QA will be used, make sure Replay MCP OAuth is connected for the same Replay account and reuse that session context for dashboard or Loop QA handoff links when available.
 6. If testing a local app, start it first and verify the actual reachable URL.
 7. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
 8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
@@ -152,19 +152,23 @@ export RECORD_REPLAY_VERBOSE='1'
 
 Some hosts or hooks may set these automatically. If in doubt, set them explicitly before opening the agent browser.
 
-## Loop QA Environment
+## Loop QA Authentication And Links
 
-If Loop QA will be used, map the Loop QA API secret before calling the Loop QA API skill:
+Prefer the Replay MCP OAuth account over a separate Loop QA API key. Do not ask the user to generate a `LOOP_QA_API_KEY` or write raw Loop QA REST calls unless they explicitly ask for direct API fallback and MCP/browser auth cannot satisfy the task.
 
-```bash
-if [ -z "${LOOP_QA_API_KEY:-}" ] && [ -n "${SECRET_LOOP_QA_API_KEY:-}" ]; then
-  export LOOP_QA_API_KEY="$SECRET_LOOP_QA_API_KEY"
-fi
+When Claude Code or the host exposes the Replay MCP OAuth access token through an approved mechanism, reuse that token only for first-party Replay surfaces:
 
-test -n "${LOOP_QA_API_KEY:-}"
+- Replay dashboard URLs under `https://app.replay.io/...`
+- Loop QA URLs under `https://loop-qa.replay.io/...`
+
+Append the token as a fragment, not a query parameter:
+
+```text
+https://app.replay.io/...#access_token=<oauth-access-token>
+https://loop-qa.replay.io/...#access_token=<oauth-access-token>
 ```
 
-Never print the token. Loop QA tokens start with `lqa_`.
+The fragment is a browser handoff hack that lets the web app seed the correct account session. Never print the raw token by itself, commit it, write it to logs, or attach it to third-party URLs. If the MCP OAuth token is not available to the agent, provide the normal dashboard or Loop QA URL and tell the user to reconnect/sign in through Replay MCP or the web app.
 
 ## Local App Check
 
@@ -254,7 +258,7 @@ replayio list
 - If the requested port was busy, use the actual port printed by the dev server.
 - Prefer direct agent-browser inspection (DOM snapshots, console logs, screenshots, storage, cookies, network tools when available) before using the Replay MCP server.
 - If Replay authentication fails, run `replayio login` or reconnect the relevant Replay app/integration.
-- If Loop QA returns 401, verify `LOOP_QA_API_KEY` is set from `SECRET_LOOP_QA_API_KEY` and starts with `lqa_`.
+- If a Loop QA or Replay dashboard link opens the wrong account, reconnect Replay MCP OAuth as the account that owns the recording, then regenerate the first-party link with `#access_token=` if the host exposes the OAuth token.
 - If the **application under test** requires interactive login, follow **Web App Authentication Walls** - do not close-and-retry the browser session in a loop.
 
 ## References
