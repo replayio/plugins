@@ -138,57 +138,57 @@
         {
           "path": "dist/claude-code/replayio/.claude-plugin/plugin.json",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/plugin.json"
+          "target": "~/.claude/skills/replayio/.claude-plugin/plugin.json"
         },
         {
           "path": "dist/claude-code/replayio/.mcp.json",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/.mcp.json"
+          "target": "~/.claude/skills/replayio/.mcp.json"
         },
         {
           "path": "dist/claude-code/replayio/LICENSE",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/LICENSE"
+          "target": "~/.claude/skills/replayio/LICENSE"
         },
         {
           "path": "dist/claude-code/replayio/assets/replayio.svg",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/assets/replayio.svg"
+          "target": "~/.claude/skills/replayio/assets/replayio.svg"
         },
         {
           "path": "dist/claude-code/replayio/hooks/hooks.json",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/hooks/hooks.json"
+          "target": "~/.claude/skills/replayio/hooks/hooks.json"
         },
         {
           "path": "dist/claude-code/replayio/scripts/post_bash_upload.sh",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/scripts/post_bash_upload.sh"
+          "target": "~/.claude/skills/replayio/scripts/post_bash_upload.sh"
         },
         {
           "path": "dist/claude-code/replayio/scripts/stop_close_and_upload.sh",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/scripts/stop_close_and_upload.sh"
+          "target": "~/.claude/skills/replayio/scripts/stop_close_and_upload.sh"
         },
         {
           "path": "dist/claude-code/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/skills/replayio/SKILL.md"
+          "target": "~/.claude/skills/replayio/skills/replayio/SKILL.md"
         },
         {
           "path": "dist/claude-code/replayio/skills/replayio/references/cli.md",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/skills/replayio/references/cli.md"
+          "target": "~/.claude/skills/replayio/skills/replayio/references/cli.md"
         },
         {
           "path": "dist/claude-code/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/skills/replayio/references/workflows.md"
+          "target": "~/.claude/skills/replayio/skills/replayio/references/workflows.md"
         },
         {
           "path": "dist/claude-code/replayio/skills/loop-qa-api/SKILL.md",
           "type": "registry:file",
-          "target": "~/.claude/plugins/replayio/skills/loop-qa-api/SKILL.md"
+          "target": "~/.claude/skills/replayio/skills/loop-qa-api/SKILL.md"
         }
       ]
     },

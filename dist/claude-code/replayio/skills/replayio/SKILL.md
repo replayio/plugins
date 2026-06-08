@@ -223,7 +223,7 @@ globalThis.tab = tabs.length > 0 ? await browser.tabs.get(tabs[0].id) : await br
 
 ## Analyzing Uploaded Recordings
 
-First inspect the live run with direct agent-browser APIs. Once a recording has uploaded, use the `replay` MCP server tools only when you need deeper Replay-specific debugging beyond direct browser output. Claude Code connects to the Replay HTTP MCP server configured in `.mcp.json`.
+First inspect the live run with direct agent-browser APIs. Once a recording has uploaded, use the `replay` MCP server tools only when you need deeper Replay-specific debugging beyond direct browser output. Claude Code connects to the Replay HTTP MCP server configured in the plugin-root `.mcp.json`.
 
 ## Replay MCP Widgets
 
