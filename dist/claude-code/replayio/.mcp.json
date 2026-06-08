@@ -2,7 +2,7 @@
   "mcpServers": {
     "replay": {
       "type": "http",
-      "url": "https://dispatch.replay.io/mcp"
+      "url": "https://loop-qa.replay.io/api/mcp"
     }
   }
 }

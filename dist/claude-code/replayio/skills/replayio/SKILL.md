@@ -123,7 +123,7 @@ replayio login
 
 Replay MCP calls are authorized **per user**. If tools return **Access denied**, you are usually not authenticated to Replay **as the same account that owns the recording**.
 
-- **Cursor**: open **Settings -> MCP**, select the **Replay** server, and complete **Sign in / Connect / Reconnect** so Cursor can finish the **OAuth** flow (including **dynamic client registration** when supported). Stay on `https://dispatch.replay.io/mcp` (do not swap in unrelated endpoints unless Replay explicitly instructs you to).
+- **Claude Code**: use the plugin-root `.mcp.json` configured for `https://loop-qa.replay.io/api/mcp`, then complete Claude Code's MCP authentication/approval flow for that server.
 - **Other hosts**: follow that host's MCP authentication mechanism (some environments use API keys or separate app connectors instead of OAuth).
 
 ## Agent Browser Executable Path
