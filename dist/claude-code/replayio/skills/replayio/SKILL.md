@@ -85,11 +85,12 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
 4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
 5. If Loop QA will be used, make sure Replay MCP OAuth is connected for the same Replay account and reuse that session context for dashboard or Loop QA handoff links when available.
-6. If testing a local app, start it first and verify the actual reachable URL.
-7. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
-8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-9. Close the agent browser tab/session when done.
-10. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
+6. If Loop QA will explore a local app, expose it on a public HTTPS URL first; Loop QA runs outside the user's machine and cannot reach `localhost`, `127.0.0.1`, private LAN, or VPN-only URLs.
+7. If testing a local app directly with the agent browser, start it first and verify the actual reachable URL.
+8. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
+9. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
+10. Close the agent browser tab/session when done.
+11. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
 
 ## Prerequisites
 
@@ -184,6 +185,24 @@ curl -I http://127.0.0.1:4323/todos
 ```
 
 If a localhost request fails even though a process is clearly listening, you may be in a restricted sandbox. Rerun the browser and reachability checks outside the sandbox.
+
+## Public URL For Loop QA
+
+The local agent browser can test `localhost`, but Loop QA cannot. Before giving Loop QA a live-app target URL, expose the dev server with a public HTTPS URL and keep that process running while Loop QA explores.
+
+Use Netlify live dev when the app supports Netlify:
+
+```bash
+netlify dev --live
+```
+
+Use ngrok for a generic local dev server:
+
+```bash
+ngrok http 4323
+```
+
+Use the public `https://...` URL from Netlify or ngrok as the Loop QA target URL. Do not hand Loop QA `localhost`, `127.0.0.1`, private LAN, or VPN-only URLs.
 
 ## Reliable Agent Browser Workflow
 

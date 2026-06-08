@@ -72,6 +72,26 @@ When a Loop QA project ID or URL is available, provide the Loop QA overview link
 
 Use this when Loop QA should explore an app URL instead of analyzing one recording.
 
+Loop QA needs a public HTTPS target URL because the service runs outside the user's machine. Do not use `localhost`, `127.0.0.1`, private LAN, or VPN-only URLs as the target.
+
+If the app is local, expose it first:
+
+```bash
+netlify dev --live
+```
+
+Or, for a generic dev server:
+
+```bash
+ngrok http <port>
+```
+
+Keep the dev server and tunnel running while Loop QA explores. Use the public `https://...` URL printed by Netlify or ngrok as the target URL, then verify it responds before handoff:
+
+```bash
+curl -I "https://your-public-url.example"
+```
+
 Capture:
 
 - Target URL.
