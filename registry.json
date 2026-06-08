@@ -30,11 +30,6 @@
           "target": "~/LICENSE"
         },
         {
-          "path": "dist/codex/replayio/README.md",
-          "type": "registry:file",
-          "target": "~/README.md"
-        },
-        {
           "path": "dist/codex/replayio/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/assets/replayio.svg"
@@ -91,11 +86,6 @@
           "path": "dist/cursor/replayio/LICENSE",
           "type": "registry:file",
           "target": "~/LICENSE"
-        },
-        {
-          "path": "dist/cursor/replayio/README.md",
-          "type": "registry:file",
-          "target": "~/README.md"
         },
         {
           "path": "dist/cursor/replayio/assets/replayio.svg",
@@ -161,11 +151,6 @@
           "target": "~/LICENSE"
         },
         {
-          "path": "dist/claude-code/replayio/README.md",
-          "type": "registry:file",
-          "target": "~/README.md"
-        },
-        {
           "path": "dist/claude-code/replayio/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/assets/replayio.svg"
@@ -222,11 +207,6 @@
           "path": "dist/opencode/replayio/AGENTS.md",
           "type": "registry:file",
           "target": "~/AGENTS.md"
-        },
-        {
-          "path": "dist/opencode/replayio/README.md",
-          "type": "registry:file",
-          "target": "~/README.md"
         },
         {
           "path": "dist/opencode/replayio/opencode.json",

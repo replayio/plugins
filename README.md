@@ -19,7 +19,7 @@ npx shadcn@latest add replayio/plugins/obvious-ai
 | `codex` | Codex plugin bundle installed to `.codex-plugin/`, `skills/replayio/`, `skills/loop-qa-api/`, `assets/`, hooks, scripts, and metadata files. |
 | `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
 | `claude-code` | Claude Code plugin bundle installed to `.claude-plugin/`, `skills/replayio/`, `skills/loop-qa-api/`, `assets/`, hooks, scripts, and MCP config. |
-| `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, `README.md`, and `opencode.json`. |
+| `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, and `opencode.json`. |
 | `obvious-ai` | Skills-only Obvious bundle installed to `.obvious/skills/...`. |
 
 The registry reads generated source files from `dist/...`, but each item installs into the platform-specific destination paths that plugin hosts expect.
