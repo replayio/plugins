@@ -1,13 +1,13 @@
 {
   "name": "replayio",
   "version": "0.1.0",
-  "description": "Record browser sessions with the Replay Browser through the host agent browser, analyze recordings through the Replay MCP server, and upload pending recordings when Claude Code stops.",
+  "description": "Record browser sessions with the Replay Browser through the host agent browser, analyze recordings through Replay MCP or Loop QA, and upload pending recordings when Claude Code stops.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
   },
   "homepage": "https://replay.io",
-  "repository": "https://github.com/openai/plugins",
+  "repository": "https://github.com/replayio/plugins",
   "license": "MIT",
   "keywords": [
     "replay",
@@ -16,6 +16,7 @@
     "browser-automation",
     "time-travel-debugging",
     "recording",
+    "loop-qa",
     "mcp"
   ]
 }
