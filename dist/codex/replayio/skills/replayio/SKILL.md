@@ -84,11 +84,12 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 2. Resolve the Replay Chromium executable path.
 3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
 4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
-5. If testing a local app, start it first and verify the actual reachable URL.
-6. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
-7. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-8. Close the agent browser tab/session when done.
-9. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
+5. If Loop QA will be used, map `LOOP_QA_API_KEY` from `SECRET_LOOP_QA_API_KEY` when available.
+6. If testing a local app, start it first and verify the actual reachable URL.
+7. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
+8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
+9. Close the agent browser tab/session when done.
+10. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
 
 ## Prerequisites
 
@@ -150,6 +151,20 @@ export RECORD_REPLAY_VERBOSE='1'
 ```
 
 Some hosts or hooks may set these automatically. If in doubt, set them explicitly before opening the agent browser.
+
+## Loop QA Environment
+
+If Loop QA will be used, map the Loop QA API secret before calling the Loop QA API skill:
+
+```bash
+if [ -z "${LOOP_QA_API_KEY:-}" ] && [ -n "${SECRET_LOOP_QA_API_KEY:-}" ]; then
+  export LOOP_QA_API_KEY="$SECRET_LOOP_QA_API_KEY"
+fi
+
+test -n "${LOOP_QA_API_KEY:-}"
+```
+
+Never print the token. Loop QA tokens start with `lqa_`.
 
 ## Local App Check
 
@@ -239,6 +254,7 @@ replayio list
 - If the requested port was busy, use the actual port printed by the dev server.
 - Prefer direct agent-browser inspection (DOM snapshots, console logs, screenshots, storage, cookies, network tools when available) before using the Replay MCP server.
 - If Replay authentication fails, run `replayio login` or reconnect the relevant Replay app/integration.
+- If Loop QA returns 401, verify `LOOP_QA_API_KEY` is set from `SECRET_LOOP_QA_API_KEY` and starts with `lqa_`.
 - If the **application under test** requires interactive login, follow **Web App Authentication Walls** - do not close-and-retry the browser session in a loop.
 
 ## References

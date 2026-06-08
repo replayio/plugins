@@ -1,6 +1,6 @@
 # Replay.io (Codex)
 
-Record browser sessions with the **Replay Browser** through the host agent browser. Set `AGENT_BROWSER_EXECUTABLE_PATH` to Replay Chromium before opening the browser, inspect the live run through the browser tool, and use the **Replay MCP** server (`.mcp.json`) after a recording uploads. Hooks upload pending recordings when the Codex turn stops.
+Record browser sessions with the **Replay Browser** through the host agent browser. Set `AGENT_BROWSER_EXECUTABLE_PATH` to Replay Chromium before opening the browser, inspect the live run through the browser tool, use the **Replay MCP** server (`.mcp.json`) after a recording uploads, and send uploaded recordings or target URLs to **Loop QA** through the bundled REST API skill. Hooks upload pending recordings when the Codex turn stops.
 
 ## MCP widgets
 
@@ -19,7 +19,7 @@ When the backend returns Replay widget results, Codex can render inspector-style
 | Plugin manifest | `.codex-plugin/plugin.json` |
 | Connected Replay app | `.app.json` |
 | Replay HTTP MCP server | `.mcp.json` |
-| Agent skill | `skills/replayio/SKILL.md` (+ `references/`) |
+| Agent skills | `skills/replayio/SKILL.md` (+ `references/`), `skills/loop-qa-api/SKILL.md` |
 | Hooks | `hooks.json` |
 | Scripts | `scripts/post_bash_upload.sh`, `scripts/stop_close_and_upload.sh` |
 | Logo | `assets/replayio.svg` |

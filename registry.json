@@ -68,6 +68,11 @@
           "path": "dist/codex/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
           "target": "~/skills/replayio/references/workflows.md"
+        },
+        {
+          "path": "dist/codex/replayio/skills/loop-qa-api/SKILL.md",
+          "type": "registry:file",
+          "target": "~/skills/loop-qa-api/SKILL.md"
         }
       ]
     },
