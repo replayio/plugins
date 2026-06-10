@@ -1,41 +1,37 @@
 ---
 name: "replay-qa"
-description: "Use when handing Replay recordings or app URLs to Replay QA from Claude Code. Prefer Replay MCP OAuth/browser handoff over direct REST calls. Covers authenticated dashboard and Replay QA links, project handoff, evidence capture, and fix workflow discipline."
+description: "Managed E2E testing service for finding bugs and adversarial verification"
 ---
 
-# Replay QA Handoff
+# Replay QA
 
-Use Replay QA through the authenticated Replay QA web surfaces and Replay MCP account context whenever possible. Do not default to raw Replay QA REST API calls or separate `lqa_` bearer tokens.
+Use Replay QA through the bundled scripts in `${CLAUDE_SKILL_DIR}/scripts`. The scripts call the Replay QA HTTP API directly, preserve project state in the repo, and avoid requiring the model to remember raw endpoint details.
 
-## Claude Code Prerequisite
+## Authentication
 
-Before using Replay QA, make sure the Claude Code plugin has been loaded for the current session and its plugin-root `.mcp.json` is active.
+The scripts look for a token in this order:
 
-Verify:
+1. `REPLAY_QA_API_KEY`
+2. `REPLAY_API_KEY`
+3. `REPLAY_ACCESS_TOKEN`
+4. `~/.replay/profile/auth.json`
 
-- Replay MCP is connected through the plugin-root `.mcp.json` and authenticated as the Replay account that owns the recording.
-- `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium.
-- `RECORD_ALL_CONTENT` and `RECORD_REPLAY_VERBOSE` are set.
-- Any Replay recording referenced by Replay QA has uploaded or has a concrete recording UUID.
-
-If the plugin or MCP setup is unknown, stop and have the user start Claude Code from the project root. The installed shadcn docs show the fallback command:
+If the user is not logged in, run:
 
 ```bash
-claude --plugin-dir .claude/skills/replay-qa
+npx replayio login
+npx replayio whoami
 ```
 
-Do not proceed with Replay QA handoff until the plugin MCP server is available.
+If the API returns 401, ask the user to export a Replay QA API token as `REPLAY_QA_API_KEY` or `REPLAY_API_KEY`.
 
-## Project Config Reuse
+## Project Reuse
 
-Before creating or selecting a Replay QA project, inspect the current project root for `.replay/config.json`.
+Before creating or selecting a Replay QA project, always inspect the current project root for `.replay/config.json`.
 
-Resolve the project root with `git rev-parse --show-toplevel` when the working directory is inside a git repo; otherwise use the current working directory. Then:
+Resolve the project root with `git rev-parse --show-toplevel`; if that fails, use the current directory. If `.replay/config.json` contains a non-empty string property named `"qa-project-id"`, reuse that project id for all Replay QA work in this repo. Do not create a duplicate project unless the user explicitly asks for a new project or the stored project is proven invalid for the current account.
 
-1. If `.replay/config.json` exists and contains a non-empty string property named `"qa-project-id"`, reuse that project ID for all Replay QA work in this project from that point on.
-2. Do not call `create_project` when a valid `"qa-project-id"` already exists unless the user explicitly asks for a new Replay QA project or the existing project is proven invalid for the current account.
-3. If `.replay/config.json` is missing, invalid, or does not contain `"qa-project-id"`, use the Replay QA MCP `create_project` tool to create a project.
-4. After `create_project` returns the project ID, create or update `.replay/config.json` so future runs can reuse it:
+If there is no reusable project id, create a project with `bootstrap.js` or `full-qa.js`. The scripts write the new project id back to `.replay/config.json` while preserving unrelated keys:
 
 ```json
 {
@@ -43,133 +39,87 @@ Resolve the project root with `git rev-parse --show-toplevel` when the working d
 }
 ```
 
-Preserve any unrelated keys already present in `.replay/config.json`. Create the `.replay/` directory if needed. Keep the file valid JSON. Do not overwrite an existing `"qa-project-id"` with a different ID without user confirmation.
+When reporting setup, say whether the id was reused from `.replay/config.json`, passed explicitly, read from the environment, or created and written back.
 
-When reporting Replay QA setup, say whether the project ID was reused from `.replay/config.json` or created with `create_project` and written back to the config file.
+## Local Apps
 
-## Authentication
+Replay QA needs network access to the app under test. For local apps, pass a local URL such as `http://localhost:3000`; the project creation script sets `use_reverse_proxy=true` for local URLs. After project creation, run `reverse-proxy.js --wait` or follow the runbook printed by `full-qa.js` so Replay QA can reach the local app. If the user provides a public URL, pass `--public`.
 
-Prefer the Replay MCP OAuth token/session. If Claude Code or the MCP host exposes the Replay OAuth access token through an approved mechanism, reuse it for first-party web handoff links instead of asking for a separate Replay QA API key.
+## Scripts
 
-Append the token as a URL fragment:
-
-```text
-#access_token=<oauth-access-token>
-```
-
-Use this only on first-party Replay URLs:
-
-- `https://app.replay.io/...`
-- `https://loop-qa.replay.io/...`
-
-Do not use `access_token` as a query parameter. Do not attach it to third-party URLs. Do not print the raw token by itself, store it in files, commit it, or log it. If the OAuth token is unavailable to the agent, use a normal first-party URL and tell the user to sign in or reconnect Replay MCP for the correct account.
-
-Do not ask the user to generate a `LOOP_QA_API_KEY` unless they explicitly ask for direct API fallback and MCP/browser auth cannot satisfy the task.
-
-## Authenticated Links
-
-When linking the user to the Replay dashboard or Replay QA, preserve the same account by adding `#access_token=` when an MCP OAuth token is available.
-
-Use this shape:
-
-```text
-https://app.replay.io/recording/<recording-id>#access_token=<oauth-access-token>
-https://loop-qa.replay.io/p/<project-id>/overview#access_token=<oauth-access-token>
-```
-
-If the base URL already has a fragment, preserve useful navigation state by adding `&access_token=` when the fragment is parameter-style. If the existing fragment is not parameter-style, use a clean Replay dashboard or Replay QA overview URL with `#access_token=` for the handoff instead of corrupting the navigation fragment. Keep the token out of prose summaries and shell output; use it only in the first-party URL that the user or browser will open.
-
-## Handoff From A Replay Recording
-
-Use this when you already have an uploaded Replay recording UUID.
-
-Capture:
-
-- Recording UUID and uploaded Replay URL.
-- Clear project or scenario name.
-- Exact failure message or stack.
-- Test source URL when available.
-- Instructions for the analysis, including what the user expects Replay QA to answer.
-
-Prefer the project ID from `.replay/config.json`. If none exists, use the Replay QA MCP `create_project` tool, then write the returned project ID to `.replay/config.json`. If no MCP tool or browser workflow is available to create the project, give the user the authenticated Replay dashboard link and the exact instructions to paste into Replay QA.
-
-When a Replay QA project ID or URL is available, provide the Replay QA overview link. Add `#access_token=` only when the OAuth token is available from the MCP/host session.
-
-## Handoff For Live App Exploration
-
-Use this when Replay QA should explore an app URL instead of analyzing one recording.
-
-Replay QA needs a public HTTPS target URL because the service runs outside the user's machine. Do not use `localhost`, `127.0.0.1`, private LAN, or VPN-only URLs as the target.
-
-If the app is local, expose it first:
+Run scripts with Node from the project root:
 
 ```bash
-netlify dev --live
+node "${CLAUDE_SKILL_DIR}/scripts/full-qa.js" http://localhost:3000 "Test the core user journeys."
 ```
 
-Or, for a generic dev server:
+Available scripts:
+
+| Script | Purpose |
+| --- | --- |
+| `bootstrap.js` | Create or reuse a project, then show details, status, and reverse-proxy setup. |
+| `full-qa.js` | Create or reuse a project, show status, show reverse-proxy setup, fetch open bug details, and print next steps. |
+| `status.js` | Show project status; pass `--watch` to poll. |
+| `reverse-proxy.js` | Show reverse-proxy setup; pass `--wait` to poll until instructions are ready. |
+| `explorations.js` | List explorations. |
+| `start-exploration.js` | Start a focused exploration only when the user asks for one. |
+| `journeys.js` | List journeys or filter locally with `--journey-id`. |
+| `test-runs.js` | List test runs; pass `--journey-id` to review a single journey's run history. |
+| `bugs.js` | List bugs; use `--status`, `--details`, and `--save`. |
+| `bug.js` | Fetch one bug by id. |
+| `mark-bug.js` | Mark a bug `fixed`, `wontfix`, `invalid`, or `reopened`. Marking `fixed` automatically retries the affected journey. |
+| `report-missing-bug.js` | Report a missing bug and ask Replay QA to create an investigation journey. |
+| `rerun-journeys.js` | Expose supported journey retry alternatives because there is no direct single-journey rerun endpoint. |
+
+Common examples:
 
 ```bash
-ngrok http <port>
+node "${CLAUDE_SKILL_DIR}/scripts/full-qa.js" http://localhost:3000
+node "${CLAUDE_SKILL_DIR}/scripts/status.js" --watch
+node "${CLAUDE_SKILL_DIR}/scripts/bugs.js" --status open --details --save
+node "${CLAUDE_SKILL_DIR}/scripts/bug.js" bug_id_here --save
+node "${CLAUDE_SKILL_DIR}/scripts/mark-bug.js" bug_id_here fixed
+node "${CLAUDE_SKILL_DIR}/scripts/start-exploration.js" "Focus on onboarding, invalid inputs, refreshes, and back navigation."
+node "${CLAUDE_SKILL_DIR}/scripts/rerun-journeys.js" --bug-id bug_id_here
+node "${CLAUDE_SKILL_DIR}/scripts/report-missing-bug.js" "Settings changes do not persist after refresh."
 ```
 
-Keep the dev server and tunnel running while Replay QA explores. Use the public `https://...` URL printed by Netlify or ngrok as the target URL, then verify it responds before handoff:
+## Slash Commands
 
-```bash
-curl -I "https://your-public-url.example"
-```
+This plugin also ships command files in the plugin `commands/` directory. Invoke them through the plugin namespace when available:
 
-Capture:
+| Command | Purpose |
+| --- | --- |
+| `/replay-qa:run-full-qa` | Bootstrap or resume QA, show status, show reverse-proxy instructions, and fetch open bugs. |
+| `/replay-qa:qa-status` | Show or watch project status. |
+| `/replay-qa:qa-bugs` | Fetch open bug details for repair work. |
+| `/replay-qa:start-new-exploration` | Start a focused exploration. |
+| `/replay-qa:rerun-journeys` | Use supported journey retry alternatives. |
+| `/replay-qa:report-missing-bug` | Ask Replay QA to investigate a missed issue. |
 
-- Target URL.
-- Scenario name.
-- User-provided credentials or login instructions, only if explicitly provided for this app.
-- Exploration goals, expected behavior, and important user flows.
-- Related Replay recording IDs, backend recording URLs, backend log URLs, or design documents when available.
+## Agent Workflow
 
-Prefer the project ID from `.replay/config.json`. If none exists, use the Replay QA MCP `create_project` tool, then write the returned project ID to `.replay/config.json`. If creation is not available from the current tools, provide a concise handoff: target URL, instructions, and the authenticated Replay QA link when available.
+Use this loop for QA and repair:
 
-## Project Status And Evidence
+1. Start or confirm the app under test.
+2. Run `full-qa.js` with the target URL and any user instructions.
+3. If reverse-proxy instructions are returned, run them from a machine that can reach the app.
+4. Poll `status.js` until there is useful progress.
+5. Fetch open bug details with `bugs.js --status open --details --save`.
+6. Read the full bug report before editing code. Use Replay QA's reproduction steps, expected behavior, actual behavior, evidence, and root-cause analysis as the primary debugging source.
+7. Fix the codebase.
+8. Mark each fixed bug with `mark-bug.js <bug-id> fixed`; Replay QA automatically retries the affected journey.
+9. Poll status and list open bugs again.
+10. Repeat until no open bugs remain.
 
-Use the Replay QA web UI, Replay MCP widgets/tools, or returned project URLs as the source of truth for status and evidence. For long-running analysis, report that Replay QA is still processing rather than guessing from partial data.
+Do not manually start new explorations unless the user asks. Project creation already starts the normal QA workflow.
 
-When Replay QA finds bugs, capture:
+## Journey Reruns
 
-- Project ID and URL.
-- Bug ID or stable bug URL.
-- Root cause.
-- Reproduction steps.
-- Expected and actual behavior.
-- Severity.
-- Replay evidence and any relevant dashboard links.
+The current OpenAPI spec exposes journeys and test runs, but it does not expose a direct endpoint to manually run one journey. Use these supported alternatives:
 
-## Direct API Fallback
+1. To inspect prior runs for a journey, run `test-runs.js --journey-id <journey-id>`.
+2. To verify a bug fix, run `mark-bug.js <bug-id> fixed`; Replay QA automatically retries the affected journey.
+3. To investigate a missed scenario, run `report-missing-bug.js "<description>"`; Replay QA creates an investigation journey.
 
-Use direct Replay QA REST calls only when the user explicitly asks for API-level work or when the first-party UI/MCP path is unavailable and the task cannot proceed otherwise. In that fallback, prefer an OAuth token already available from the Replay MCP account if the API accepts it. Only request a separate Replay QA API key when OAuth is unavailable or not accepted.
-
-## Fix Workflow Discipline
-
-When Replay QA is used to guide fixes:
-
-1. Create or identify Replay QA projects for all selected failing recordings before fixing.
-2. Wait for each selected project to finish analysis.
-3. Fetch full bug details.
-4. Group bugs by root cause and affected file.
-5. Patch only from Replay QA evidence plus the current source file.
-6. Re-run the app or tests and capture fresh evidence.
-7. Report project IDs, bug IDs, recording IDs, files changed, and remaining undiagnosed failures.
-
-Do not infer a root cause from source reading while Replay QA analysis is still pending.
-
-## Reporting
-
-When reporting Replay QA work, include:
-
-- Project ID and URL, if returned.
-- Whether the project ID was reused from `.replay/config.json` or created and written there.
-- Recording ID or target URL analyzed.
-- Status summary.
-- Bug count and each bug ID inspected.
-- Root cause and recommended fix from bug detail.
-- Whether an authenticated `#access_token=` handoff link was used. Do not include the raw token separately.
-- Any account mismatch, unavailable OAuth token, or incomplete-analysis blocker.
+Do not claim that a journey was manually rerun unless one of the supported flows actually triggered verification.

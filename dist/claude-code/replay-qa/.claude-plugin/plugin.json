@@ -1,7 +1,7 @@
 {
   "name": "replay-qa",
-  "version": "0.1.0",
-  "description": "Use Replay QA from Claude Code through the Loop QA MCP server.",
+  "version": "0.2.0",
+  "description": "Use Replay QA from Claude Code with script-backed skills and slash commands.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -11,7 +11,7 @@
   "license": "MIT",
   "keywords": [
     "replay",
-    "loop-qa",
-    "mcp"
+    "replay-qa",
+    "qa"
   ]
 }
