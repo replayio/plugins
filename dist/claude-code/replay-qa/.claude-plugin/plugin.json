@@ -1,7 +1,7 @@
 {
-  "name": "replayio",
+  "name": "replay-qa",
   "version": "0.1.0",
-  "description": "Use Loop QA from Claude Code through the Replay Loop QA MCP server.",
+  "description": "Use Replay QA from Claude Code through the Loop QA MCP server.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
