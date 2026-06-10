@@ -1,7 +1,7 @@
 {
   "name": "replayio",
   "version": "0.1.0",
-  "description": "Record browser sessions with the Replay Browser through the host agent browser, analyze recordings through Replay MCP or Loop QA, and upload pending recordings when Claude Code stops.",
+  "description": "Use Loop QA from Claude Code through the Replay Loop QA MCP server.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -11,11 +11,6 @@
   "license": "MIT",
   "keywords": [
     "replay",
-    "agent-browser",
-    "playwright",
-    "browser-automation",
-    "time-travel-debugging",
-    "recording",
     "loop-qa",
     "mcp"
   ]

@@ -133,7 +133,7 @@
       "name": "claude-code",
       "type": "registry:item",
       "title": "Replay.io Claude Code Plugin",
-      "description": "Claude Code plugin bundle for Replay browser recording, Replay MCP configuration, scripts, and agent skill guidance.",
+      "description": "Claude Code plugin bundle for Loop QA MCP configuration and agent skill guidance.",
       "docs": "After installing, start Claude Code from the project root. The plugin should load automatically from `.claude/skills/replayio`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replayio\n```",
       "files": [
         {
@@ -165,21 +165,6 @@
           "path": "dist/claude-code/replayio/scripts/stop_close_and_upload.sh",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/scripts/stop_close_and_upload.sh"
-        },
-        {
-          "path": "dist/claude-code/replayio/skills/replayio/SKILL.md",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/skills/replayio/SKILL.md"
-        },
-        {
-          "path": "dist/claude-code/replayio/skills/replayio/references/cli.md",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/skills/replayio/references/cli.md"
-        },
-        {
-          "path": "dist/claude-code/replayio/skills/replayio/references/workflows.md",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/skills/replayio/references/workflows.md"
         },
         {
           "path": "dist/claude-code/replayio/skills/loop-qa-api/SKILL.md",

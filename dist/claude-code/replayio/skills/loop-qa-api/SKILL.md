@@ -7,18 +7,24 @@ description: "Use when handing Replay recordings or app URLs to Loop QA from Cla
 
 Use Loop QA through the authenticated Replay/Loop QA web surfaces and Replay MCP account context whenever possible. Do not default to raw Loop QA REST API calls or separate `lqa_` bearer tokens.
 
-## Replay.io Skill Prerequisite
+## Claude Code Prerequisite
 
-Before using Loop QA, make sure the `replayio` skill in this same Claude Code plugin bundle has been loaded and applied for the current session.
+Before using Loop QA, make sure the Claude Code plugin has been loaded for the current session and its plugin-root `.mcp.json` is active.
 
-If setup is unknown, load `../replayio/SKILL.md` first and follow it before continuing. In particular, verify:
+Verify:
 
 - Replay MCP is connected through the plugin-root `.mcp.json` and authenticated as the Replay account that owns the recording.
 - `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium.
 - `RECORD_ALL_CONTENT` and `RECORD_REPLAY_VERBOSE` are set.
 - Any Replay recording referenced by Loop QA has uploaded or has a concrete recording UUID.
 
-Do not proceed with Loop QA handoff if this prerequisite is unknown. Load and apply the `replayio` skill first, then return to this skill.
+If the plugin or MCP setup is unknown, stop and have the user start Claude Code from the project root. The installed shadcn docs show the fallback command:
+
+```bash
+claude --plugin-dir .claude/skills/replayio
+```
+
+Do not proceed with Loop QA handoff until the plugin MCP server is available.
 
 ## Project Config Reuse
 
@@ -150,7 +156,7 @@ When Loop QA is used to guide fixes:
 3. Fetch full bug details.
 4. Group bugs by root cause and affected file.
 5. Patch only from Loop QA evidence plus the current source file.
-6. Re-run the app or tests with Replay agent-browser recording enabled.
+6. Re-run the app or tests and capture fresh evidence.
 7. Report project IDs, bug IDs, recording IDs, files changed, and remaining undiagnosed failures.
 
 Do not infer a root cause from source reading while Loop QA analysis is still pending.
