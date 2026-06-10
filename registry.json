@@ -157,16 +157,6 @@
           "target": "~/.claude/skills/replayio/assets/replayio.svg"
         },
         {
-          "path": "dist/claude-code/replayio/scripts/post_bash_upload.sh",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/scripts/post_bash_upload.sh"
-        },
-        {
-          "path": "dist/claude-code/replayio/scripts/stop_close_and_upload.sh",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/scripts/stop_close_and_upload.sh"
-        },
-        {
           "path": "dist/claude-code/replayio/skills/loop-qa-api/SKILL.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/skills/loop-qa-api/SKILL.md"
