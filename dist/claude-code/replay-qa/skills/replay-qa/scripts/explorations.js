@@ -10,7 +10,7 @@ async function main() {
     undefined,
     { page: args.page || 1, pageSize: args.pageSize || 20 }
   );
-  qa.printJson(response);
+  qa.printJson(qa.normalizeList(response, "explorations", { project_id: project.projectId }));
 }
 
 main().catch(qa.handleError);

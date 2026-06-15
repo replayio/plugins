@@ -1,11 +1,20 @@
 ---
 name: "replay-qa"
 description: "Managed E2E testing service for finding bugs and adversarial verification"
+allowed-tools: Bash(node *)
 ---
 
 # Replay QA
 
 Use Replay QA through the bundled scripts in `${CLAUDE_SKILL_DIR}/scripts`. The scripts call the Replay QA HTTP API directly, preserve project state in the repo, and avoid requiring the model to remember raw endpoint details.
+
+## Current Replay QA Context
+
+This block is injected when the skill loads. If shell execution is disabled or auth is missing, use the error message to decide which setup step to run next.
+
+```!
+node "${CLAUDE_SKILL_DIR}/scripts/context.js" "$ARGUMENTS"
+```
 
 ## Authentication
 
@@ -30,6 +39,8 @@ If the API returns 401, ask the user to export a Replay QA API token as `REPLAY_
 Before creating or selecting a Replay QA project, always inspect the current project root for `.replay/config.json`.
 
 Resolve the project root with `git rev-parse --show-toplevel`; if that fails, use the current directory. If `.replay/config.json` contains a non-empty string property named `"qa-project-id"`, reuse that project id for all Replay QA work in this repo. Do not create a duplicate project unless the user explicitly asks for a new project or the stored project is proven invalid for the current account.
+
+If the user gives a Replay QA dashboard URL, pass it directly to the script or pass its project id with `--project-id`. The scripts recognize project ids such as `proj-example` inside positional arguments, `--project-id`, `--project-url`, and `REPLAY_QA_PROJECT_ID`. An explicit project argument overrides `.replay/config.json`.
 
 If there is no reusable project id, create a project with `bootstrap.js` or `full-qa.js`. The scripts write the new project id back to `.replay/config.json` while preserving unrelated keys:
 
@@ -58,6 +69,7 @@ Available scripts:
 | Script | Purpose |
 | --- | --- |
 | `bootstrap.js` | Create or reuse a project, then show details, status, and reverse-proxy setup. |
+| `context.js` | Inject concise current project context, status, and open bug summaries into this skill. |
 | `full-qa.js` | Create or reuse a project, show status, show reverse-proxy setup, fetch open bug details, and print next steps. |
 | `status.js` | Show project status; pass `--watch` to poll. |
 | `reverse-proxy.js` | Show reverse-proxy setup; pass `--wait` to poll until instructions are ready. |
@@ -71,11 +83,14 @@ Available scripts:
 | `report-missing-bug.js` | Report a missing bug and ask Replay QA to create an investigation journey. |
 | `rerun-journeys.js` | Expose supported journey retry alternatives because there is no direct single-journey rerun endpoint. |
 
+List scripts print normalized JSON for agent use. For example, `bugs.js` returns a top-level `bugs` array even when the API response uses `items`. Pass `--raw` to `bugs.js` if you need the unmodified API list response.
+
 Common examples:
 
 ```bash
 node "${CLAUDE_SKILL_DIR}/scripts/full-qa.js" http://localhost:3000
 node "${CLAUDE_SKILL_DIR}/scripts/status.js" --watch
+node "${CLAUDE_SKILL_DIR}/scripts/bugs.js" "https://qa.replay.io/projects/proj-example/bugs"
 node "${CLAUDE_SKILL_DIR}/scripts/bugs.js" --status open --details --save
 node "${CLAUDE_SKILL_DIR}/scripts/bug.js" bug_id_here --save
 node "${CLAUDE_SKILL_DIR}/scripts/mark-bug.js" bug_id_here fixed

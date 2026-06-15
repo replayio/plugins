@@ -14,12 +14,18 @@ async function main() {
     { status, page: args.page || 1, pageSize: args.pageSize || 50 }
   );
 
-  if (!args.details && !args.save) {
+  if (args.raw) {
     qa.printJson(list);
     return;
   }
 
-  const ids = qa.extractIds(list);
+  const bugs = qa.listItems(list);
+  if (!args.details && !args.save) {
+    qa.printJson(qa.normalizeList(list, "bugs", { project_id: project.projectId, status }));
+    return;
+  }
+
+  const ids = qa.extractIds(bugs.length ? bugs : list);
   const details = [];
   for (const id of ids) {
     const detail = await qa.apiRequest("GET", `/bugs/${id}`);
@@ -32,7 +38,19 @@ async function main() {
     }
   }
 
-  qa.printJson({ project_id: project.projectId, status, count: details.length, bugs: details });
+  qa.printJson(
+    qa.normalizeList(
+      {
+        items: details,
+        total: list.total,
+        resolvedCount: list.resolvedCount,
+        page: list.page,
+        pageSize: list.pageSize,
+      },
+      "bugs",
+      { project_id: project.projectId, status }
+    )
+  );
 }
 
 main().catch(qa.handleError);

@@ -210,6 +210,33 @@ function extractProjectId(response) {
   );
 }
 
+function parseProjectId(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const match = value.match(/proj-[A-Za-z0-9_-]+/);
+  return match ? match[0] : "";
+}
+
+function getArgumentProjectId(args = {}) {
+  for (const value of [args.projectId, args.project, args.projectUrl]) {
+    const projectId = parseProjectId(value);
+    if (projectId) {
+      return projectId;
+    }
+  }
+
+  for (const value of args._ || []) {
+    const projectId = parseProjectId(value);
+    if (projectId) {
+      return projectId;
+    }
+  }
+
+  return "";
+}
+
 function getFirstUrlArg(args) {
   const first = args._[0];
   return typeof first === "string" && /^https?:\/\//.test(first) ? first : "";
@@ -312,14 +339,19 @@ async function createProject(args = {}, root = getProjectRoot()) {
 
 async function ensureProject(args = {}) {
   const root = getProjectRoot();
+  const argumentId = getArgumentProjectId(args);
+  if (argumentId) {
+    return { projectId: argumentId, source: "argument", root, configPath: getConfigPath(root) };
+  }
+
+  const envId = parseProjectId(process.env.REPLAY_QA_PROJECT_ID);
+  if (envId) {
+    return { projectId: envId, source: "environment", root, configPath: getConfigPath(root) };
+  }
+
   const configId = args.ignoreConfig ? "" : getConfigProjectId(root);
   if (configId) {
     return { projectId: configId, source: "config", root, configPath: getConfigPath(root) };
-  }
-
-  const explicitId = args.projectId || process.env.REPLAY_QA_PROJECT_ID;
-  if (explicitId) {
-    return { projectId: explicitId, source: args.projectId ? "argument" : "environment", root, configPath: getConfigPath(root) };
   }
 
   if (args.create === false) {
@@ -344,6 +376,50 @@ function findObjectsByKeyValue(value, key, expected) {
     }
   });
   return matches;
+}
+
+function listItems(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  for (const key of ["items", "bugs", "journeys", "test_runs", "testRuns", "explorations", "data", "results"]) {
+    if (Array.isArray(value[key])) {
+      return value[key];
+    }
+  }
+
+  return [];
+}
+
+function normalizeList(value, outputKey, metadata = {}) {
+  const items = listItems(value);
+  const normalized = {
+    ...metadata,
+    count: items.length,
+  };
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [sourceKey, targetKey] of [
+      ["total", "total"],
+      ["resolvedCount", "resolved_count"],
+      ["resolved_count", "resolved_count"],
+      ["page", "page"],
+      ["pageSize", "page_size"],
+      ["page_size", "page_size"],
+    ]) {
+      if (value[sourceKey] !== undefined) {
+        normalized[targetKey] = value[sourceKey];
+      }
+    }
+  }
+
+  normalized[outputKey] = items;
+  return normalized;
 }
 
 function extractIds(value) {
@@ -394,13 +470,17 @@ module.exports = {
   ensureProject,
   extractIds,
   findObjectsByKeyValue,
+  getArgumentProjectId,
   getConfigPath,
   getConfigProjectId,
   getInstructionsArg,
   getProjectId,
   getProjectRoot,
   handleError,
+  listItems,
+  normalizeList,
   parseArgs,
+  parseProjectId,
   printJson,
   printSection,
   writeConfigProjectId,

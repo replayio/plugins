@@ -27,7 +27,12 @@ async function main() {
       "No direct journey rerun endpoint",
       "The current Replay QA OpenAPI spec does not expose a manual single-journey rerun endpoint. Showing prior test runs for the requested journey instead."
     );
-    qa.printJson(response);
+    qa.printJson(
+      qa.normalizeList(response, "test_runs", {
+        project_id: project.projectId,
+        journey_id: args.journeyId,
+      })
+    );
     return;
   }
 
@@ -65,7 +70,7 @@ async function main() {
       "Pass a description to report a missing bug and spawn an investigation journey.",
     ].join("\n")
   );
-  qa.printSection("Journeys", journeys);
+  qa.printSection("Journeys", qa.normalizeList(journeys, "journeys", { project_id: project.projectId }));
 }
 
 main().catch(qa.handleError);

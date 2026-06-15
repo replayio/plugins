@@ -202,6 +202,11 @@
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bugs.js"
         },
         {
+          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/context.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/context.js"
+        },
+        {
           "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/explorations.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/explorations.js"
@@ -220,6 +225,11 @@
           "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/mark-bug.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/mark-bug.js"
+        },
+        {
+          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/package.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/package.json"
         },
         {
           "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
