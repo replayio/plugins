@@ -1,26 +1,13 @@
 ---
 name: "loop-qa-api"
-description: "Use when calling Replay QA's REST API directly from an Obvious agent. Covers direct API auth, Replay CLI token fallback, .replay/config.json project reuse, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and Obvious artifact opening. This skill is instructions-only and does not use MCP, hooks, scripts, or app bindings."
+description: "Use when calling Replay QA's REST API directly from an Obvious agent. Covers direct API auth, Replay CLI token fallback, .replay/config.json project reuse, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and Obvious artifact opening. This skill is instructions-only and does not use MCP, hooks, scripts, app bindings, agent-browser streaming, or the general Replay.io setup skill."
 ---
 
 # Replay QA API
 
 Use the Replay QA REST API directly. This Obvious plugin is skills-only: do not call MCP tools, app connectors, hooks, or bundled scripts for Replay QA work.
 
-This bundle also installs `replayio` and `agent-browser-streaming`. Keep using those skills when the task needs Replay browser setup, Replay Chromium, recording uploads, or an agent-browser stream. This skill is only the direct API runbook.
-
-## Related Skill Prerequisites
-
-Before making Replay QA API calls that depend on a live browser run or a Replay recording, make sure the `replayio` skill in this same `.obvious/skills` bundle has been loaded and applied for the current session.
-
-If the current session has not already completed `replayio` setup, load `../replayio/SKILL.md` first and follow it before continuing. In particular, verify:
-
-- `REPLAY_API_KEY` is mapped from `SECRET_REPLAY_API_KEY` when available.
-- `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium when a recorded browser run is needed.
-- `AGENT_BROWSER_STREAM_PORT`, `RECORD_ALL_CONTENT`, and `RECORD_REPLAY_VERBOSE` are set before launching `agent-browser`.
-- Any Replay recording referenced by Replay QA has been uploaded or has a concrete recording UUID.
-
-Only load `../agent-browser-streaming/SKILL.md` when the user needs a hosted live view of the agent browser. Do not use streaming as a substitute for Replay QA API calls.
+This bundle intentionally installs only this direct API skill. It does not include agent-browser streaming or the general Replay.io setup skill.
 
 ## Authentication
 

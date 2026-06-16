@@ -295,23 +295,13 @@
       "name": "obvious-ai",
       "type": "registry:item",
       "title": "Replay.io Obvious Skills",
-      "description": "Skills-only Obvious bundle with Replay setup, agent-browser streaming guidance, and direct Replay QA API guidance with Replay CLI token fallback and project reuse.",
-      "docs": "After installing, Obvious should load the skills from `.obvious/skills`. Keep using `replayio` for Replay Chromium, recording, and upload setup; use `agent-browser-streaming` only when a hosted live browser view is needed; use `loop-qa-api` for direct Replay QA REST API calls, Replay CLI token fallback through `~/.replay/profile/auth.json`, `.replay/config.json` project reuse, and Obvious iframe artifacts for Replay QA projects.",
+      "description": "Skills-only Obvious bundle for direct Replay QA API usage, Replay CLI token fallback, project reuse, and Obvious iframe artifacts.",
+      "docs": "After installing, Obvious should load `loop-qa-api` from `.obvious/skills`. Use it for direct Replay QA REST API calls, Replay CLI token fallback through `~/.replay/profile/auth.json`, `.replay/config.json` project reuse, and Obvious iframe artifacts for Replay QA projects.",
       "files": [
-        {
-          "path": "dist/obvious-ai/.obvious/skills/agent-browser-streaming/SKILL.md",
-          "type": "registry:file",
-          "target": "~/.obvious/skills/agent-browser-streaming/SKILL.md"
-        },
         {
           "path": "dist/obvious-ai/.obvious/skills/loop-qa-api/SKILL.md",
           "type": "registry:file",
           "target": "~/.obvious/skills/loop-qa-api/SKILL.md"
-        },
-        {
-          "path": "dist/obvious-ai/.obvious/skills/replayio/SKILL.md",
-          "type": "registry:file",
-          "target": "~/.obvious/skills/replayio/SKILL.md"
         }
       ]
     }
