@@ -165,33 +165,6 @@ curl -sS -X POST "$REPLAY_QA_API_BASE/projects" \
   }' | tee replay-qa-project.json >/dev/null
 ```
 
-For local app URLs such as `http://localhost:3000`, include `"use_reverse_proxy": true` unless the user explicitly says the URL is public:
-
-```bash
-curl -sS -X POST "$REPLAY_QA_API_BASE/projects" \
-  -H "Authorization: Bearer $REPLAY_QA_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Local app exploration",
-    "target_url": "http://localhost:3000",
-    "use_reverse_proxy": true,
-    "instructions": "Explore the main user flows and report correctness, polish, and UX bugs."
-  }' | tee replay-qa-project.json >/dev/null
-```
-
-Optional fields supported by the API include `webhook_url`, `finished_webhook_url`, `backend_recording_url`, `backend_log_url`, `logins`, and `design_document`. Only include credentials when the user explicitly provided them for this app.
-
-## Local Reverse Proxy
-
-Replay QA needs network access to the app under test. If a project uses `use_reverse_proxy`, fetch the project reverse-proxy instructions and run the returned runbook from an environment that can reach the app:
-
-```bash
-curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/reverse-proxy" \
-  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
-```
-
-Poll this endpoint until it returns usable instructions. Do not claim local app QA is running until the reverse proxy is connected or Replay QA can otherwise reach the target URL.
-
 ## Poll Project Status
 
 Poll every 30 seconds until the project reports completion. Status can be returned either at the top level or under `project.status`, so inspect the response shape instead of assuming one field.
