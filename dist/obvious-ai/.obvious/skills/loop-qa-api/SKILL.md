@@ -1,13 +1,13 @@
 ---
 name: "loop-qa-api"
-description: "Use when calling Replay QA's REST API directly from an Obvious agent. Covers direct API auth, Replay CLI token fallback, .replay/config.json project reuse, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and Obvious artifact opening. This skill is instructions-only and does not use MCP, hooks, scripts, app bindings, agent-browser streaming, or the general Replay.io setup skill."
+description: "Use when calling Replay QA's REST API directly from an Obvious agent. Covers direct API auth, Replay CLI token fallback, .replay/config.json project reuse, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and Obvious artifact opening. This skill is instructions-only and does not use MCP, hooks, scripts, app bindings, or the general Replay.io setup skill."
 ---
 
 # Replay QA API
 
 Use the Replay QA REST API directly. This Obvious plugin is skills-only: do not call MCP tools, app connectors, hooks, or bundled scripts for Replay QA work.
 
-This bundle intentionally installs only this direct API skill. It does not include agent-browser streaming or the general Replay.io setup skill.
+This bundle intentionally installs only this direct API skill. It does not include the general Replay.io setup skill.
 
 ## Authentication
 
