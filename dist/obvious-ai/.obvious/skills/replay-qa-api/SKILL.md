@@ -1,5 +1,5 @@
 ---
-name: "loop-qa-api"
+name: "replay-qa-api"
 description: "Use when calling Replay QA's REST API directly from an Obvious agent. Covers direct API auth, Replay CLI token fallback, .replay/config.json project reuse, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and Obvious artifact opening. This skill is instructions-only and does not use MCP, hooks, scripts, app bindings, or the general Replay.io setup skill."
 ---
 
@@ -11,17 +11,16 @@ This bundle intentionally installs only this direct API skill. It does not inclu
 
 ## Authentication
 
-Replay QA API requests need a bearer token. Dedicated Loop QA tokens usually start with `lqa_`, but Replay CLI access tokens from `~/.replay/profile/auth.json` are also supported.
+Replay QA API requests need a bearer token. Dedicated Replay QA tokens usually start with `lqa_`, but Replay CLI access tokens from `~/.replay/profile/auth.json` are also supported.
 
 Look for a token in this order:
 
 1. `REPLAY_QA_API_KEY`
-2. `LOOP_QA_API_KEY`
-3. `SECRET_LOOP_QA_API_KEY`
-4. `REPLAY_API_KEY`
-5. `SECRET_REPLAY_API_KEY`
-6. `REPLAY_ACCESS_TOKEN`
-7. `~/.replay/profile/auth.json`, created by `npx replayio login`
+2. `SECRET_REPLAY_QA_API_KEY`
+3. `REPLAY_API_KEY`
+4. `SECRET_REPLAY_API_KEY`
+5. `REPLAY_ACCESS_TOKEN`
+6. `~/.replay/profile/auth.json`, created by `npx replayio login`
 
 Never print the token and do not run these commands with shell tracing enabled.
 
@@ -29,7 +28,7 @@ Never print the token and do not run these commands with shell tracing enabled.
 set +x
 
 if [ -z "${REPLAY_QA_API_KEY:-}" ]; then
-  for key_name in LOOP_QA_API_KEY SECRET_LOOP_QA_API_KEY REPLAY_API_KEY SECRET_REPLAY_API_KEY REPLAY_ACCESS_TOKEN; do
+  for key_name in REPLAY_QA_API_KEY SECRET_REPLAY_QA_API_KEY REPLAY_API_KEY SECRET_REPLAY_API_KEY REPLAY_ACCESS_TOKEN; do
     key_value="$(printenv "$key_name" 2>/dev/null || true)"
     if [ -n "$key_value" ]; then
       export REPLAY_QA_API_KEY="$key_value"
@@ -52,14 +51,14 @@ npx replayio login
 npx replayio whoami
 ```
 
-If the API returns `401`, refresh the Replay CLI login or ask the user to provide a dedicated Replay QA token in `REPLAY_QA_API_KEY` or `SECRET_LOOP_QA_API_KEY`.
+If the API returns `401`, refresh the Replay CLI login or ask the user to provide a dedicated Replay QA token in `REPLAY_QA_API_KEY` or `SECRET_REPLAY_QA_API_KEY`.
 
 ## Base URL
 
 Use the same API host as the Claude Code Replay QA plugin unless the environment explicitly overrides it:
 
 ```bash
-export REPLAY_QA_API_BASE="${REPLAY_QA_API_BASE:-${LOOP_QA_BASE_URL:-https://qa.replay.io/api/v1}}"
+export REPLAY_QA_API_BASE="${REPLAY_QA_API_BASE:-https://qa.replay.io/api/v1}"
 ```
 
 All requests need:
@@ -119,7 +118,7 @@ node -e 'const fs = require("fs"); const configPath = process.argv[1]; const pro
 Whenever you receive, reuse, or create a Replay QA project id, create an Obvious iframe artifact pointing to the project overview:
 
 ```text
-https://loop-qa.replay.io/p/${PROJECT_ID}/overview
+https://qa.replay.io/p/${PROJECT_ID}/overview
 ```
 
 If the API response also includes a dashboard URL, report both the artifact URL and the returned URL. The artifact URL is still the Obvious-friendly way to open the project from the agent workspace.

@@ -1,37 +1,37 @@
 ---
-name: "loop-qa-api"
-description: "Use when calling Replay Loop QA's REST API directly from Codex. Covers bearer-token setup, Replay recording prerequisites, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and fix workflow discipline."
+name: "replay-qa-api"
+description: "Use when calling Replay QA's REST API directly from Codex. Covers bearer-token setup, Replay recording prerequisites, project creation from Replay recordings or target URLs, polling, bug retrieval, journeys, test runs, explorations, and fix workflow discipline."
 ---
 
-# Loop QA API
+# Replay QA API
 
-Use the Loop QA REST API directly when a task needs Replay Loop QA analysis.
-This skill is instructions-only: do not use Replay MCP tools, Codex apps, or plugin hooks as substitutes for Loop QA REST API calls.
+Use the Replay QA REST API directly when a task needs Replay QA analysis.
+This skill is instructions-only: do not use Replay MCP tools, Codex apps, or plugin hooks as substitutes for Replay QA REST API calls.
 
 ## Replay.io Skill Prerequisite
 
-Before making any Loop QA API call, make sure the `replayio` skill in this same Codex plugin bundle has been loaded and applied for the current session.
+Before making any Replay QA API call, make sure the `replayio` skill in this same Codex plugin bundle has been loaded and applied for the current session.
 
 If setup is unknown, load `../replayio/SKILL.md` first and follow it before continuing. In particular, verify:
 
 - `REPLAY_API_KEY` is mapped from `SECRET_REPLAY_API_KEY` when available.
-- `LOOP_QA_API_KEY` is mapped from `SECRET_LOOP_QA_API_KEY`.
+- `REPLAY_QA_API_KEY` is mapped from `SECRET_REPLAY_QA_API_KEY`.
 - `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium.
 - `RECORD_ALL_CONTENT` and `RECORD_REPLAY_VERBOSE` are set.
-- Any Replay recording referenced by Loop QA has uploaded or has a concrete recording UUID.
+- Any Replay recording referenced by Replay QA has uploaded or has a concrete recording UUID.
 
 Do not proceed with project creation or polling if this prerequisite is unknown. Load and apply the `replayio` skill first, then return to this skill.
 
 ## Authentication
 
-Loop QA API tokens are bearer tokens that start with `lqa_`. Generate one in Loop QA Settings and store it as `SECRET_LOOP_QA_API_KEY` when the host supports project secrets. Map it before calling the API:
+Replay QA API tokens are bearer tokens that start with `lqa_`. Generate one in Replay QA Settings and store it as `SECRET_REPLAY_QA_API_KEY` when the host supports project secrets. Map it before calling the API:
 
 ```bash
-if [ -z "${LOOP_QA_API_KEY:-}" ] && [ -n "${SECRET_LOOP_QA_API_KEY:-}" ]; then
-  export LOOP_QA_API_KEY="$SECRET_LOOP_QA_API_KEY"
+if [ -z "${REPLAY_QA_API_KEY:-}" ] && [ -n "${SECRET_REPLAY_QA_API_KEY:-}" ]; then
+  export REPLAY_QA_API_KEY="$SECRET_REPLAY_QA_API_KEY"
 fi
 
-test -n "${LOOP_QA_API_KEY:-}"
+test -n "${REPLAY_QA_API_KEY:-}"
 ```
 
 Never print the token.
@@ -41,13 +41,13 @@ Never print the token.
 Use:
 
 ```bash
-export LOOP_QA_BASE_URL="${LOOP_QA_BASE_URL:-https://loop-qa.replay.io/api/v1}"
+export REPLAY_QA_API_BASE="${REPLAY_QA_API_BASE:-https://qa.replay.io/api/v1}"
 ```
 
 All requests need:
 
 ```bash
--H "Authorization: Bearer $LOOP_QA_API_KEY"
+-H "Authorization: Bearer $REPLAY_QA_API_KEY"
 -H "Content-Type: application/json"
 ```
 
@@ -63,8 +63,8 @@ Required input:
 - `webhook_url`: optional.
 
 ```bash
-curl -sS -X POST "$LOOP_QA_BASE_URL/projects" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY" \
+curl -sS -X POST "$REPLAY_QA_API_BASE/projects" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "S01 - checkout total does not update",
@@ -76,16 +76,16 @@ curl -sS -X POST "$LOOP_QA_BASE_URL/projects" \
 Save the returned project `id` and project `url` if present. If only an id is returned, the overview URL is:
 
 ```text
-https://loop-qa.replay.io/p/:projectId/overview
+https://qa.replay.io/p/:projectId/overview
 ```
 
 ## Create A Project For Live App Exploration
 
-Use this when Loop QA should explore an app URL instead of analyzing one recording.
+Use this when Replay QA should explore an app URL instead of analyzing one recording.
 
 ```bash
-curl -sS -X POST "$LOOP_QA_BASE_URL/projects" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY" \
+curl -sS -X POST "$REPLAY_QA_API_BASE/projects" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Todo app smoke exploration",
@@ -103,26 +103,26 @@ Poll every 30 seconds until the project reports completion. Status can be return
 ```bash
 PROJECT_ID="..."
 
-curl -sS "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/status" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/status" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
-For long-running analysis, report that Loop QA is still processing rather than guessing from partial data.
+For long-running analysis, report that Replay QA is still processing rather than guessing from partial data.
 
 ## Fetch Bugs
 
 List bugs:
 
 ```bash
-curl -sS "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/bugs?page_size=100" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/bugs?page_size=100" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
 Filter open bugs:
 
 ```bash
-curl -sS "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/bugs?status=open&page_size=100" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/bugs?status=open&page_size=100" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
 Fetch full bug detail:
@@ -130,8 +130,8 @@ Fetch full bug detail:
 ```bash
 BUG_ID="..."
 
-curl -sS "$LOOP_QA_BASE_URL/bugs/$BUG_ID" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/bugs/$BUG_ID" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
 Use bug detail as the source of truth for root cause, reproduction steps, expected behavior, actual behavior, severity, and Replay evidence.
@@ -141,29 +141,29 @@ Use bug detail as the source of truth for root cause, reproduction steps, expect
 List journeys:
 
 ```bash
-curl -sS "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/journeys?page_size=100" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/journeys?page_size=100" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
 List test runs:
 
 ```bash
-curl -sS "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/test-runs?page_size=100" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/test-runs?page_size=100" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
 List explorations:
 
 ```bash
-curl -sS "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/explorations?page_size=100" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY"
+curl -sS "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/explorations?page_size=100" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY"
 ```
 
 Start another exploration:
 
 ```bash
-curl -sS -X POST "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/explorations" \
-  -H "Authorization: Bearer $LOOP_QA_API_KEY" \
+curl -sS -X POST "$REPLAY_QA_API_BASE/projects/$PROJECT_ID/explorations" \
+  -H "Authorization: Bearer $REPLAY_QA_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Re-test checkout, saved drafts, and navigation edge cases.",
@@ -175,17 +175,17 @@ curl -sS -X POST "$LOOP_QA_BASE_URL/projects/$PROJECT_ID/explorations" \
 
 ## Fix Workflow Discipline
 
-When Loop QA is used to guide fixes:
+When Replay QA is used to guide fixes:
 
-1. Create Loop QA projects for all selected failing recordings before fixing.
+1. Create Replay QA projects for all selected failing recordings before fixing.
 2. Wait for each selected project to finish analysis.
 3. Fetch full bug details.
 4. Group bugs by root cause and affected file.
-5. Patch only from Loop QA evidence plus the current source file.
+5. Patch only from Replay QA evidence plus the current source file.
 6. Re-run the app or tests with Replay agent-browser recording enabled.
 7. Report project IDs, bug IDs, recording IDs, files changed, and remaining undiagnosed failures.
 
-Do not infer a root cause from source reading while Loop QA analysis is still pending.
+Do not infer a root cause from source reading while Replay QA analysis is still pending.
 
 ## API Reference
 
@@ -207,12 +207,12 @@ Key endpoints:
 OpenAPI spec:
 
 ```text
-https://loop-qa.replay.io/api/v1/openapi.json
+https://qa.replay.io/api/v1/openapi.json
 ```
 
 ## Reporting
 
-When reporting Loop QA API work, include:
+When reporting Replay QA API work, include:
 
 - Project ID and URL, if returned.
 - Recording ID or target URL analyzed.
