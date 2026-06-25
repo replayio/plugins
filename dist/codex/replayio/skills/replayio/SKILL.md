@@ -19,7 +19,7 @@ For the standard Replay install on macOS, the executable is usually:
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
 ```
 
-Recordings upload through the plugin's stop/idle hook as a safety net. If you need the Replay URL before reporting results, close the agent browser tab/session and force an upload with `replayio upload-all || replayio upload`.
+This plugin does not install hooks. After a recorded run, close the agent browser tab/session and manually upload pending recordings with `replayio upload-all || replayio upload` before reporting results.
 
 ## Direct Agent Browser First
 
@@ -54,13 +54,13 @@ In Browser-plugin hosts:
 await tab.close();
 ```
 
-Then, if you need the uploaded Replay URL before your response, run:
+Then manually upload pending recordings before your response:
 
 ```bash
 replayio upload-all || replayio upload
 ```
 
-Do not leave a browser open at the end of your turn. If you forget, the stop/idle hook will attempt to upload pending recordings as a safety net, but you may not see the resulting Replay URL before responding.
+Do not leave a browser open at the end of your turn. No hook will upload recordings for you, so run the upload command yourself after closing the tab/session.
 
 **Exception - authentication wall:** If you must stop because the user needs to sign in interactively (see below), **do not** close the browser just to retry or reset. Leaving the session open preserves the headed window they should use; closing can end the recording before login is done.
 
@@ -89,7 +89,7 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 7. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
 8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
 9. Close the agent browser tab/session when done.
-10. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
+10. Run `replayio upload-all || replayio upload` before reporting results.
 
 ## Prerequisites
 
@@ -150,7 +150,7 @@ export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
 
-Some hosts or hooks may set these automatically. If in doubt, set them explicitly before opening the agent browser.
+Set these explicitly before opening the agent browser.
 
 ## Replay QA Environment
 
@@ -233,7 +233,7 @@ When a widget is visible, use it as evidence instead of restating every detail i
 
 ## Recording Uploads
 
-The plugin's stop/idle hook attempts to upload pending Replay recordings automatically at the end of the turn. Because agent-browser interactions do not necessarily run through a shell close command, force an upload yourself when you need the Replay URL before reporting results:
+The plugin does not install hooks or upload pending Replay recordings automatically. After closing the recorded browser tab/session, upload recordings manually before reporting results:
 
 ```bash
 replayio upload-all || replayio upload

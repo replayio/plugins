@@ -16,7 +16,7 @@ npx shadcn@latest add replayio/plugins/obvious-ai
 
 | Item | Installs |
 | --- | --- |
-| `codex` | Codex plugin bundle installed to `.codex-plugin/`, `skills/replayio/`, `skills/replay-qa-api/`, `assets/`, hooks, scripts, and metadata files. |
+| `codex` | Codex plugin bundle installed to `.codex-plugin/`, `skills/replayio/`, `skills/replay-qa-api/`, `assets/`, and metadata files. |
 | `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
 | `claude-code` | Claude Code Replay QA plugin installed to `.claude/skills/replay-qa/`, including plugin commands and script-backed skill helpers. |
 | `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, and `opencode.json`. |

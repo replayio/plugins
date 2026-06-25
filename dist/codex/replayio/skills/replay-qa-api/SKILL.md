@@ -6,7 +6,7 @@ description: "Use when calling Replay QA's REST API directly from Codex. Covers 
 # Replay QA API
 
 Use the Replay QA REST API directly when a task needs Replay QA analysis.
-This skill is instructions-only: do not use Replay MCP tools, Codex apps, or plugin hooks as substitutes for Replay QA REST API calls.
+This skill is instructions-only: do not use Replay MCP tools, Codex apps, or automatic upload behavior as substitutes for Replay QA REST API calls.
 
 ## Replay.io Skill Prerequisite
 
@@ -18,7 +18,7 @@ If setup is unknown, load `../replayio/SKILL.md` first and follow it before cont
 - `REPLAY_QA_API_KEY` is mapped from `SECRET_REPLAY_QA_API_KEY`.
 - `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium.
 - `RECORD_ALL_CONTENT` and `RECORD_REPLAY_VERBOSE` are set.
-- Any Replay recording referenced by Replay QA has uploaded or has a concrete recording UUID.
+- Any Replay recording referenced by Replay QA has been manually uploaded or has a concrete recording UUID.
 
 Do not proceed with project creation or polling if this prerequisite is unknown. Load and apply the `replayio` skill first, then return to this skill.
 

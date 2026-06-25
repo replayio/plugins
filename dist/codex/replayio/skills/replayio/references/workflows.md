@@ -17,7 +17,7 @@ Then drive the browser through the host browser API:
 3. Interact with stable locators or visible UI.
 4. Re-snapshot after DOM changes or navigation.
 5. Close the tab/session when done.
-6. Run `replayio upload-all || replayio upload` if you need the Replay URL before reporting.
+6. Run `replayio upload-all || replayio upload` before reporting.
 
 ## Debugging And Inspection
 

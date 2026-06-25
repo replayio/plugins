@@ -25,6 +25,12 @@ await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
 await tab.close();
 ```
 
+After closing the tab/session, manually upload pending recordings before reporting results:
+
+```bash
+replayio upload-all || replayio upload
+```
+
 ## Inspection
 
 Use direct agent-browser inspection before reaching for Replay analysis tools:
