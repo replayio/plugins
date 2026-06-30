@@ -8,7 +8,7 @@
       "name": "replayio",
       "source": {
         "source": "local",
-        "path": "./dist/codex/replayio"
+        "path": "./codex/replayio"
       },
       "policy": {
         "installation": "AVAILABLE",

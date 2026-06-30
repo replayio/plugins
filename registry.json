@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "replayio-plugins",
-  "homepage": "https://github.com/replayio/plugins",
+  "homepage": "https://github.com/replayio/agent-harness-plugins",
   "items": [
     {
       "name": "codex",
@@ -10,47 +10,47 @@
       "description": "Codex plugin bundle for recording Replay browser sessions, capturing playwright-cli MP4 videos, embedding video evidence, and inspecting recordings through Replay MCP.",
       "files": [
         {
-          "path": "dist/codex/replayio/.app.json",
+          "path": "codex/replayio/.app.json",
           "type": "registry:file",
           "target": "~/.app.json"
         },
         {
-          "path": "dist/codex/replayio/.codex-plugin/plugin.json",
+          "path": "codex/replayio/.codex-plugin/plugin.json",
           "type": "registry:file",
           "target": "~/.codex-plugin/plugin.json"
         },
         {
-          "path": "dist/codex/replayio/.mcp.json",
+          "path": "codex/replayio/.mcp.json",
           "type": "registry:file",
           "target": "~/.mcp.json"
         },
         {
-          "path": "dist/codex/replayio/LICENSE",
+          "path": "codex/replayio/LICENSE",
           "type": "registry:file",
           "target": "~/LICENSE"
         },
         {
-          "path": "dist/codex/replayio/assets/replayio.svg",
+          "path": "codex/replayio/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/assets/replayio.svg"
         },
         {
-          "path": "dist/codex/replayio/skills/replayio/SKILL.md",
+          "path": "codex/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replayio/SKILL.md"
         },
         {
-          "path": "dist/codex/replayio/skills/replayio/references/cli.md",
+          "path": "codex/replayio/skills/replayio/references/cli.md",
           "type": "registry:file",
           "target": "~/skills/replayio/references/cli.md"
         },
         {
-          "path": "dist/codex/replayio/skills/replayio/references/workflows.md",
+          "path": "codex/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
           "target": "~/skills/replayio/references/workflows.md"
         },
         {
-          "path": "dist/codex/replayio/skills/replay-qa-api/SKILL.md",
+          "path": "codex/replayio/skills/replay-qa-api/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replay-qa-api/SKILL.md"
         }
@@ -63,52 +63,52 @@
       "description": "Cursor plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, and agent skill guidance.",
       "files": [
         {
-          "path": "dist/cursor/replayio/.cursor-plugin/plugin.json",
+          "path": "cursor/replayio/.cursor-plugin/plugin.json",
           "type": "registry:file",
           "target": "~/.cursor-plugin/plugin.json"
         },
         {
-          "path": "dist/cursor/replayio/LICENSE",
+          "path": "cursor/replayio/LICENSE",
           "type": "registry:file",
           "target": "~/LICENSE"
         },
         {
-          "path": "dist/cursor/replayio/assets/replayio.svg",
+          "path": "cursor/replayio/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/assets/replayio.svg"
         },
         {
-          "path": "dist/cursor/replayio/hooks/hooks.json",
+          "path": "cursor/replayio/hooks/hooks.json",
           "type": "registry:file",
           "target": "~/hooks/hooks.json"
         },
         {
-          "path": "dist/cursor/replayio/mcp.json",
+          "path": "cursor/replayio/mcp.json",
           "type": "registry:file",
           "target": "~/mcp.json"
         },
         {
-          "path": "dist/cursor/replayio/scripts/post_bash_upload.sh",
+          "path": "cursor/replayio/scripts/post_bash_upload.sh",
           "type": "registry:file",
           "target": "~/scripts/post_bash_upload.sh"
         },
         {
-          "path": "dist/cursor/replayio/scripts/stop_close_and_upload.sh",
+          "path": "cursor/replayio/scripts/stop_close_and_upload.sh",
           "type": "registry:file",
           "target": "~/scripts/stop_close_and_upload.sh"
         },
         {
-          "path": "dist/cursor/replayio/skills/replayio/SKILL.md",
+          "path": "cursor/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replayio/SKILL.md"
         },
         {
-          "path": "dist/cursor/replayio/skills/replayio/references/cli.md",
+          "path": "cursor/replayio/skills/replayio/references/cli.md",
           "type": "registry:file",
           "target": "~/skills/replayio/references/cli.md"
         },
         {
-          "path": "dist/cursor/replayio/skills/replayio/references/workflows.md",
+          "path": "cursor/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
           "target": "~/skills/replayio/references/workflows.md"
         }
@@ -122,132 +122,132 @@
       "docs": "After installing, start Claude Code from the project root. The plugin should load automatically from `.claude/skills/replay-qa`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replay-qa\n```\n\nReplay QA commands are provided by the plugin, including `/replay-qa:run-full-qa`, `/replay-qa:qa-status`, `/replay-qa:qa-bugs`, `/replay-qa:start-new-exploration`, `/replay-qa:rerun-journeys`, and `/replay-qa:report-missing-bug`.",
       "files": [
         {
-          "path": "dist/claude-code/replay-qa/.claude-plugin/plugin.json",
+          "path": "claude-code/replay-qa/.claude-plugin/plugin.json",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/.claude-plugin/plugin.json"
         },
         {
-          "path": "dist/claude-code/replay-qa/LICENSE",
+          "path": "claude-code/replay-qa/LICENSE",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/LICENSE"
         },
         {
-          "path": "dist/claude-code/replay-qa/assets/replayio.svg",
+          "path": "claude-code/replay-qa/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/assets/replayio.svg"
         },
         {
-          "path": "dist/claude-code/replay-qa/commands/qa-bugs.md",
+          "path": "claude-code/replay-qa/commands/qa-bugs.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/commands/qa-bugs.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/commands/qa-status.md",
+          "path": "claude-code/replay-qa/commands/qa-status.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/commands/qa-status.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/commands/report-missing-bug.md",
+          "path": "claude-code/replay-qa/commands/report-missing-bug.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/commands/report-missing-bug.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/commands/rerun-journeys.md",
+          "path": "claude-code/replay-qa/commands/rerun-journeys.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/commands/rerun-journeys.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/commands/run-full-qa.md",
+          "path": "claude-code/replay-qa/commands/run-full-qa.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/commands/run-full-qa.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/commands/start-new-exploration.md",
+          "path": "claude-code/replay-qa/commands/start-new-exploration.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/commands/start-new-exploration.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/SKILL.md",
+          "path": "claude-code/replay-qa/skills/replay-qa/SKILL.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/SKILL.md"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/bootstrap.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bootstrap.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bootstrap.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/bug.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bug.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bug.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/bugs.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bugs.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bugs.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/context.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/context.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/context.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/explorations.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/explorations.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/explorations.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/full-qa.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/full-qa.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/full-qa.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/journeys.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/journeys.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/journeys.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/mark-bug.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/mark-bug.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/mark-bug.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/package.json",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/package.json",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/package.json"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/report-missing-bug.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/rerun-journeys.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/reverse-proxy.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/start-exploration.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/start-exploration.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/start-exploration.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/status.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/status.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/status.js"
         },
         {
-          "path": "dist/claude-code/replay-qa/skills/replay-qa/scripts/test-runs.js",
+          "path": "claude-code/replay-qa/skills/replay-qa/scripts/test-runs.js",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/test-runs.js"
         }
@@ -260,17 +260,17 @@
       "description": "OpenCode plugin bundle with Replay MCP config, Replay workflow guidance, and OpenCode hooks.",
       "files": [
         {
-          "path": "dist/opencode/replayio/.opencode/plugins/replayio.js",
+          "path": "opencode/replayio/.opencode/plugins/replayio.js",
           "type": "registry:file",
           "target": "~/.opencode/plugins/replayio.js"
         },
         {
-          "path": "dist/opencode/replayio/AGENTS.md",
+          "path": "opencode/replayio/AGENTS.md",
           "type": "registry:file",
           "target": "~/AGENTS.md"
         },
         {
-          "path": "dist/opencode/replayio/opencode.json",
+          "path": "opencode/replayio/opencode.json",
           "type": "registry:file",
           "target": "~/opencode.json"
         }
@@ -284,7 +284,7 @@
       "docs": "After installing, Obvious should load `replay-qa-api` from `.obvious/skills`. Use it for direct Replay QA REST API calls, Replay CLI token fallback through `~/.replay/profile/auth.json`, `.replay/config.json` project reuse, and Obvious iframe artifacts for Replay QA projects.",
       "files": [
         {
-          "path": "dist/obvious-ai/.obvious/skills/replay-qa-api/SKILL.md",
+          "path": "obvious-ai/.obvious/skills/replay-qa-api/SKILL.md",
           "type": "registry:file",
           "target": "~/.obvious/skills/replay-qa-api/SKILL.md"
         }

@@ -5,11 +5,11 @@ This repository is a shadcn GitHub registry for Replay.io agent and editor plugi
 Install a bundle with `shadcn add`:
 
 ```bash
-npx shadcn@latest add replayio/plugins/codex
-npx shadcn@latest add replayio/plugins/cursor
-npx shadcn@latest add replayio/plugins/claude-code
-npx shadcn@latest add replayio/plugins/opencode
-npx shadcn@latest add replayio/plugins/obvious-ai
+npx shadcn@latest add replayio/agent-harness-plugins/codex
+npx shadcn@latest add replayio/agent-harness-plugins/cursor
+npx shadcn@latest add replayio/agent-harness-plugins/claude-code
+npx shadcn@latest add replayio/agent-harness-plugins/opencode
+npx shadcn@latest add replayio/agent-harness-plugins/obvious-ai
 ```
 
 Install the Codex bundle as a Codex plugin marketplace:
@@ -26,7 +26,7 @@ the plugin bundle path:
 codex plugin marketplace add https://github.com/replayio/agent-harness-plugins \
   --ref main \
   --sparse .agents/plugins/marketplace.json \
-  --sparse dist/codex/replayio
+  --sparse codex/replayio
 ```
 
 ## Registry Items
@@ -39,7 +39,7 @@ codex plugin marketplace add https://github.com/replayio/agent-harness-plugins \
 | `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, and `opencode.json`. |
 | `obvious-ai` | Skills-only Obvious bundle installed to `.obvious/skills/replay-qa-api/SKILL.md`, including direct Replay QA API, Replay CLI token fallback, artifact, and project-reuse guidance. |
 
-The registry reads generated source files from `dist/...`, but each item installs into the platform-specific destination paths that plugin hosts expect.
+The registry reads generated source files from the top-level platform directories, but each item installs into the platform-specific destination paths that plugin hosts expect.
 
 ## Validate
 
