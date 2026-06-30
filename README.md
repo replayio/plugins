@@ -12,6 +12,23 @@ npx shadcn@latest add replayio/plugins/opencode
 npx shadcn@latest add replayio/plugins/obvious-ai
 ```
 
+Install the Codex bundle as a Codex plugin marketplace:
+
+```bash
+codex plugin marketplace add https://github.com/replayio/agent-harness-plugins --ref main
+codex plugin add replayio@replayio-plugins
+```
+
+If you use sparse checkout when adding the marketplace, include both the marketplace manifest and
+the plugin bundle path:
+
+```bash
+codex plugin marketplace add https://github.com/replayio/agent-harness-plugins \
+  --ref main \
+  --sparse .agents/plugins/marketplace.json \
+  --sparse dist/codex/replayio
+```
+
 ## Registry Items
 
 | Item | Installs |

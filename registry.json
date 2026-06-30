@@ -7,7 +7,7 @@
       "name": "codex",
       "type": "registry:item",
       "title": "Replay.io Codex Plugin",
-      "description": "Codex plugin bundle for recording agent browser sessions with Replay Chromium and inspecting recordings through Replay MCP.",
+      "description": "Codex plugin bundle for recording Replay browser sessions, capturing playwright-cli MP4 videos, embedding video evidence, and inspecting recordings through Replay MCP.",
       "files": [
         {
           "path": "dist/codex/replayio/.app.json",

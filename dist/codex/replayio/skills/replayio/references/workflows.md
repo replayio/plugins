@@ -1,6 +1,6 @@
 # Agent Browser Workflows
 
-Use the host agent browser with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`.
+Use the host agent browser with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH` for Replay-first work. Use `playwright-cli` when the run needs an MP4 browser recording.
 
 ## Standard Interaction Loop
 
@@ -36,3 +36,34 @@ console.log(await tab.playwright.evaluate(() => ({
 ```
 
 Use Replay analysis tools only after the recording has uploaded and direct browser output is not enough to explain the issue.
+
+## Playwright CLI MP4 Loop
+
+```bash
+VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
+mkdir -p "$(dirname "$VIDEO_PATH")"
+npx --yes --package @playwright/cli playwright-cli open "$URL"
+npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
+npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
+```
+
+Use `playwright-cli` interaction, inspection, and chapter commands during the run:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli video-chapter "Checkout flow"
+npx --yes --package @playwright/cli playwright-cli snapshot
+```
+
+Before responding:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli video-stop
+npx --yes --package @playwright/cli playwright-cli close
+test -f "$VIDEO_PATH"
+```
+
+Embed the video directly in the response:
+
+```markdown
+![video](/absolute/path/to/browser-run.mp4)
+```

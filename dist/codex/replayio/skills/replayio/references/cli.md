@@ -8,7 +8,7 @@ export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
 
-The Replay plugin no longer expects normal browser work to go through `playwright-cli`. Use the host agent browser or browser tool directly, with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`.
+Use the host agent browser or browser tool directly for Replay-first browser work, with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`. Use `playwright-cli` when the run needs an MP4 artifact or the host workflow specifically requires CLI-driven browser control.
 
 ## Basics
 
@@ -29,6 +29,32 @@ After closing the tab/session, manually upload pending recordings before reporti
 
 ```bash
 replayio upload-all || replayio upload
+```
+
+## MP4 Recording With playwright-cli
+
+Start video before meaningful interaction:
+
+```bash
+VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
+mkdir -p "$(dirname "$VIDEO_PATH")"
+npx --yes --package @playwright/cli playwright-cli open "$URL"
+npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
+npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
+```
+
+Stop and verify video before reporting:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli video-stop
+npx --yes --package @playwright/cli playwright-cli close
+test -f "$VIDEO_PATH"
+```
+
+Always embed generated MP4 files in the final response with Markdown image syntax:
+
+```markdown
+![video](/absolute/path/to/recording.mp4)
 ```
 
 ## Inspection

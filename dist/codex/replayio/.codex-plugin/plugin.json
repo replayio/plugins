@@ -1,7 +1,7 @@
 {
   "name": "replayio",
   "version": "0.1.0",
-  "description": "Record browser sessions with the Replay Browser through the host agent browser, manually upload recordings after each run, and analyze recordings through Replay MCP tools or Replay QA.",
+  "description": "Record browser sessions with Replay Chromium or playwright-cli MP4 capture, manually upload Replay recordings after each run, and analyze recordings through Replay MCP tools or Replay QA.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -16,6 +16,8 @@
     "browser-automation",
     "time-travel-debugging",
     "recording",
+    "mp4",
+    "video",
     "replay-qa",
     "chatgpt-app"
   ],
@@ -24,8 +26,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Replay.io",
-    "shortDescription": "Record browser sessions and inspect Replay recordings or Replay QA results",
-    "longDescription": "Drive the host agent browser with Replay Chromium selected by AGENT_BROWSER_EXECUTABLE_PATH to capture time-travel debuggable recordings, manually upload pending recordings after the run, analyze uploaded recordings through Replay MCP tools, and create Replay QA projects for recording analysis or live-app exploration. In MCP Apps-aware hosts, Replay tool results can render rich debugging widgets for logpoints, console output, React trees, Redux state, network requests, screenshots, source code, profiles, and exception stacks.",
+    "shortDescription": "Record Replay sessions, capture MP4 browser videos, and inspect Replay or Replay QA results",
+    "longDescription": "Drive the host agent browser with Replay Chromium selected by AGENT_BROWSER_EXECUTABLE_PATH to capture time-travel debuggable recordings, or use playwright-cli video-start/video-stop when an MP4 browser recording is needed. Manually upload pending Replay recordings after the run, embed local MP4 evidence in Markdown responses, analyze uploaded recordings through Replay MCP tools, and create Replay QA projects for recording analysis or live-app exploration. In MCP Apps-aware hosts, Replay tool results can render rich debugging widgets for logpoints, console output, React trees, Redux state, network requests, screenshots, source code, profiles, and exception stacks.",
     "developerName": "Replay",
     "category": "Coding",
     "capabilities": [
@@ -37,7 +39,7 @@
     "privacyPolicyURL": "https://replay.io/privacy",
     "termsOfServiceURL": "https://replay.io/terms",
     "defaultPrompt": [
-      "Record an agent browser session against this local app and analyze the resulting recording",
+      "Record an agent browser session against this local app, embed the MP4 video, and analyze the resulting recording",
       "Create a Replay QA project for this Replay recording and report the bugs"
     ],
     "brandColor": "#F02D5E",

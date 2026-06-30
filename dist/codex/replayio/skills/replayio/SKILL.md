@@ -1,11 +1,11 @@
 ---
 name: "replayio"
-description: "Use when you need to record or inspect an agent browser run in Replay, test a local app with the host agent browser using Replay Chromium, or use the Replay MCP server for deeper debugging of an uploaded recording."
+description: "Use when you need to record or inspect a Replay browser run, capture a playwright-cli MP4 video, embed video evidence in the response, test a local app with Replay Chromium, or use the Replay MCP server for deeper debugging of an uploaded recording."
 ---
 
 # Replay Browser + Agent Browser + Replay MCP
 
-Use the host **agent browser** with Replay Chromium whenever you need a recorded browser session. Do **not** drive the app with `playwright-cli` for normal browser work.
+Use the host **agent browser** with Replay Chromium whenever you need a time-travel debuggable Replay recording. Use `playwright-cli` when the user needs an MP4 artifact of the browser run or when the host workflow specifically requires CLI-driven browser control.
 
 Before opening the agent browser, point it at Replay Chromium:
 
@@ -19,7 +19,40 @@ For the standard Replay install on macOS, the executable is usually:
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
 ```
 
-This plugin does not install hooks. After a recorded run, close the agent browser tab/session and manually upload pending recordings with `replayio upload-all || replayio upload` before reporting results.
+This plugin does not install hooks. After a recorded Replay run, close the agent browser tab/session and manually upload pending recordings with `replayio upload-all || replayio upload` before reporting results. After a `playwright-cli` MP4 run, stop video recording before closing the session and embed the local `.mp4` in the response as Markdown.
+
+## MP4 Video Response Contract
+
+When using `playwright-cli` for browser work, start MP4 recording before meaningful interaction and stop it before reporting. Use an absolute `.mp4` path so the final response can embed the file directly:
+
+```bash
+VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
+mkdir -p "$(dirname "$VIDEO_PATH")"
+npx --yes --package @playwright/cli playwright-cli open "$URL"
+npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
+npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
+```
+
+After the run:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli video-stop
+npx --yes --package @playwright/cli playwright-cli close
+```
+
+Always include the MP4 in the response using Markdown image syntax whenever a video was produced:
+
+```markdown
+![video](/absolute/path/to/recording.mp4)
+```
+
+For example:
+
+```markdown
+![video](/Users/brettlamy/Documents/meeting-bot/tmp/recordings/meeting-bot-demo-2026-06-30/meeting-bot-demo.mp4)
+```
+
+If the requested run cannot produce an MP4, say so explicitly and report the blocker.
 
 ## Direct Agent Browser First
 
@@ -42,7 +75,7 @@ console.log(await tab.dev.logs({ levels: ["error"], limit: 50 }));
 await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
 ```
 
-Use the browser API's Playwright/DOM/vision helpers for interaction; the key restriction is to avoid the external `playwright-cli` path.
+Use the browser API's Playwright/DOM/vision helpers for interaction. If MP4 evidence is needed, use the `playwright-cli` workflow above instead of relying on screenshots alone.
 
 ## Close-When-Done Contract
 
@@ -54,13 +87,13 @@ In Browser-plugin hosts:
 await tab.close();
 ```
 
-Then manually upload pending recordings before your response:
+Then manually upload pending Replay recordings before your response:
 
 ```bash
 replayio upload-all || replayio upload
 ```
 
-Do not leave a browser open at the end of your turn. No hook will upload recordings for you, so run the upload command yourself after closing the tab/session.
+Do not leave a browser open at the end of your turn. No hook will upload recordings for you, so run the upload command yourself after closing the tab/session. If you used `playwright-cli` video capture, run `video-stop`, close the CLI browser session, verify the `.mp4` path exists, and embed it in the response.
 
 **Exception - authentication wall:** If you must stop because the user needs to sign in interactively (see below), **do not** close the browser just to retry or reset. Leaving the session open preserves the headed window they should use; closing can end the recording before login is done.
 
@@ -86,10 +119,12 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
 5. If Replay QA will be used, map `REPLAY_QA_API_KEY` from `SECRET_REPLAY_QA_API_KEY` when available.
 6. If testing a local app, start it first and verify the actual reachable URL.
-7. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
+7. Drive and inspect the page directly with the host agent browser, or use `playwright-cli` with `video-start` when MP4 evidence is required.
 8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-9. Close the agent browser tab/session when done.
-10. Run `replayio upload-all || replayio upload` before reporting results.
+9. If using `playwright-cli`, stop MP4 recording and close the CLI browser session before reporting.
+10. Close the agent browser tab/session when done.
+11. Run `replayio upload-all || replayio upload` before reporting Replay results.
+12. Embed any MP4 generated by the run in the final response as `![video](/absolute/path/to/file.mp4)`.
 
 ## Prerequisites
 
@@ -139,7 +174,7 @@ Verify the executable exists before browser work:
 test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
 ```
 
-Do not configure `.playwright/cli.config.json` for normal runs, and do not switch back to `playwright-cli` just to select the browser executable. If the agent browser was already running before the environment variable was set, restart or reconnect the agent browser so it picks up the Replay Chromium path.
+Do not switch back to `playwright-cli` just to select the browser executable. If the agent browser was already running before the environment variable was set, restart or reconnect the agent browser so it picks up the Replay Chromium path. Use `playwright-cli` intentionally when you need its MP4 video commands.
 
 ## Recording Environment
 
@@ -209,6 +244,34 @@ await tab.close();
 
 Use `domSnapshot()` before constructing locators, and again after DOM changes or navigation.
 
+## Reliable Playwright CLI MP4 Workflow
+
+Use this path when the task needs a shareable MP4 of the browser run:
+
+```bash
+export RECORD_ALL_CONTENT='1'
+export RECORD_REPLAY_VERBOSE='1'
+VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
+mkdir -p "$(dirname "$VIDEO_PATH")"
+npx --yes --package @playwright/cli playwright-cli open "$URL"
+npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
+npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
+```
+
+Interact through `playwright-cli` commands or the host's attached CLI session. Before responding:
+
+```bash
+npx --yes --package @playwright/cli playwright-cli video-stop
+npx --yes --package @playwright/cli playwright-cli close
+test -f "$VIDEO_PATH"
+```
+
+Embed the verified file in the response:
+
+```markdown
+![video](/absolute/path/to/browser-run.mp4)
+```
+
 ## Attach To An Already-Open Agent Browser
 
 If the agent browser is already running, attach through the host browser API instead of starting a new CLI session.
@@ -250,6 +313,7 @@ replayio list
 - If the agent browser does not record, verify `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium and restart/reconnect the agent browser after setting it.
 - If `test -x "$AGENT_BROWSER_EXECUTABLE_PATH"` fails, run `npx @replayio/replay install` or fix the path.
 - If no Replay URL is available before you respond, close the agent browser tab/session and run `replayio upload-all || replayio upload`.
+- If a `playwright-cli` MP4 was requested but no `.mp4` exists, run `video-stop`, check the absolute `VIDEO_PATH`, and report the blocker if the file still was not produced.
 - If the app is on localhost, verify the exact URL with `curl -I` before opening the browser.
 - If the requested port was busy, use the actual port printed by the dev server.
 - Prefer direct agent-browser inspection (DOM snapshots, console logs, screenshots, storage, cookies, network tools when available) before using the Replay MCP server.
