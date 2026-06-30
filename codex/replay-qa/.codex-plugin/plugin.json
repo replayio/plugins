@@ -1,0 +1,46 @@
+{
+  "name": "replay-qa",
+  "version": "0.1.0",
+  "description": "Run Replay QA against production, staging, and PR preview URLs with script-backed project, status, bug, journey, and exploration workflows.",
+  "author": {
+    "name": "Replay",
+    "url": "https://replay.io"
+  },
+  "homepage": "https://qa.replay.io",
+  "repository": "https://github.com/replayio/plugins",
+  "license": "MIT",
+  "keywords": [
+    "replay-qa",
+    "qa",
+    "e2e-testing",
+    "production-qa",
+    "staging",
+    "pr-preview",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Replay QA",
+    "shortDescription": "Run QA against production, staging, and PR preview URLs",
+    "longDescription": "Replay QA creates or reuses a QA project for a live app URL, then uses packaged scripts to check status, inspect bugs, review journeys and test runs, start requested explorations, and mark fixed bugs so affected journeys are retried. Use it for production, staging, and PR preview validation where the app is already reachable by Replay QA.",
+    "developerName": "Replay",
+    "category": "QA",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://qa.replay.io",
+    "privacyPolicyURL": "https://replay.io/privacy",
+    "termsOfServiceURL": "https://replay.io/terms",
+    "defaultPrompt": [
+      "Run Replay QA against this PR preview and list the open bugs.",
+      "Check Replay QA status for this project and fetch the open bug details.",
+      "After I fix these bugs, mark them fixed and poll Replay QA until the affected journeys retry."
+    ],
+    "brandColor": "#F02D5E",
+    "composerIcon": "./assets/replayio.svg",
+    "logo": "./assets/replayio.svg",
+    "screenshots": []
+  }
+}

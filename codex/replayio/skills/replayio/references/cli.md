@@ -8,7 +8,7 @@ export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
 
-Use the host agent browser or browser tool directly for Replay-first browser work, with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`. Use `playwright-cli` when the run needs an MP4 artifact or the host workflow specifically requires CLI-driven browser control.
+Use the packaged browser lifecycle scripts for Replay-first browser work. `browser-open.js` opens the browser with Replay recording flags and starts WebM screencast capture; `browser-close.js` stops capture, closes the browser, transcodes WebM to MP4 with ffmpeg, verifies MP4 output, and uploads pending Replay recordings.
 
 ## Basics
 
@@ -25,30 +25,25 @@ await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
 await tab.close();
 ```
 
-After closing the tab/session, manually upload pending recordings before reporting results:
+When the browser work is done, close through the lifecycle script:
 
 ```bash
-replayio upload-all || replayio upload
+node "$SCRIPT_DIR/browser-close.js"
 ```
 
-## MP4 Recording With playwright-cli
+## MP4 Recording With Screencast And ffmpeg
 
-Start video before meaningful interaction:
+Open the browser before meaningful interaction:
 
 ```bash
 VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
-mkdir -p "$(dirname "$VIDEO_PATH")"
-npx --yes --package @playwright/cli playwright-cli open "$URL"
-npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
-npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
+node "$SCRIPT_DIR/browser-open.js" "$URL" --output "$VIDEO_PATH"
 ```
 
-Stop and verify video before reporting:
+Close, stop capture, synchronously transcode to MP4, verify video, and upload Replay recordings before reporting:
 
 ```bash
-npx --yes --package @playwright/cli playwright-cli video-stop
-npx --yes --package @playwright/cli playwright-cli close
-test -f "$VIDEO_PATH"
+node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
 ```
 
 Always embed generated MP4 files in the final response with Markdown image syntax:
@@ -56,6 +51,26 @@ Always embed generated MP4 files in the final response with Markdown image synta
 ```markdown
 ![video](/absolute/path/to/recording.mp4)
 ```
+
+Do not use Playwright BrowserContext `recordVideo` for requested MP4 evidence. It can produce WebM. The lifecycle scripts intentionally capture WebM internally, then `browser-close.js` waits for capture stop and ffmpeg to finish before returning a verified MP4. Do not embed a WebM or rename WebM to `.mp4`.
+
+If ffmpeg is missing, install it and rerun:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt update && sudo apt install ffmpeg
+
+# Windows
+winget install Gyan.FFmpeg
+# or: choco install ffmpeg
+
+ffmpeg -version
+```
+
+The raw-frame screencast route with `onFrame` can feed frames into ffmpeg for custom streaming encoders, but the final video is still only safe to embed after the ffmpeg process exits successfully.
 
 ## Inspection
 

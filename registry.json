@@ -1,13 +1,121 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "replayio-plugins",
-  "homepage": "https://github.com/replayio/agent-harness-plugins",
+  "homepage": "https://github.com/replayio/plugins",
   "items": [
     {
       "name": "codex",
       "type": "registry:item",
-      "title": "Replay.io Codex Plugin",
-      "description": "Codex plugin bundle for recording Replay browser sessions, capturing playwright-cli MP4 videos, embedding video evidence, and inspecting recordings through Replay MCP.",
+      "title": "Replay QA Codex Plugin",
+      "description": "Codex Replay QA app for running QA against production, staging, and PR preview URLs with packaged project, status, bug, journey, and exploration scripts.",
+      "files": [
+        {
+          "path": "codex/replay-qa/.codex-plugin/plugin.json",
+          "type": "registry:file",
+          "target": "~/.codex-plugin/plugin.json"
+        },
+        {
+          "path": "codex/replay-qa/LICENSE",
+          "type": "registry:file",
+          "target": "~/LICENSE"
+        },
+        {
+          "path": "codex/replay-qa/assets/replayio.svg",
+          "type": "registry:file",
+          "target": "~/assets/replayio.svg"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/SKILL.md",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/SKILL.md"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/bootstrap.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/bootstrap.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/bug.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/bug.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/bugs.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/bugs.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/context.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/context.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/explorations.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/explorations.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/full-qa.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/full-qa.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/journeys.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/journeys.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/mark-bug.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/mark-bug.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/package.json",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/package.json"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/replay-qa-lib.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/report-missing-bug.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/rerun-journeys.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/reverse-proxy.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/start-exploration.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/start-exploration.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/status.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/status.js"
+        },
+        {
+          "path": "codex/replay-qa/skills/replay-qa/scripts/test-runs.js",
+          "type": "registry:file",
+          "target": "~/skills/replay-qa/scripts/test-runs.js"
+        }
+      ]
+    },
+    {
+      "name": "codex-pro",
+      "type": "registry:item",
+      "title": "Replay.io Pro Codex Plugin",
+      "description": "Codex Replay.io dev tools bundle for the direct Replay MCP server, Replay Chromium recordings, browser lifecycle screencast capture, ffmpeg-backed MP4 output, upload hooks, and debugging widgets.",
       "files": [
         {
           "path": "codex/replayio/.app.json",
@@ -25,6 +133,11 @@
           "target": "~/.mcp.json"
         },
         {
+          "path": "codex/replayio/hooks.json",
+          "type": "registry:file",
+          "target": "~/hooks.json"
+        },
+        {
           "path": "codex/replayio/LICENSE",
           "type": "registry:file",
           "target": "~/LICENSE"
@@ -33,6 +146,26 @@
           "path": "codex/replayio/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/assets/replayio.svg"
+        },
+        {
+          "path": "codex/replayio/scripts/browser-open.js",
+          "type": "registry:file",
+          "target": "~/scripts/browser-open.js"
+        },
+        {
+          "path": "codex/replayio/scripts/browser-close.js",
+          "type": "registry:file",
+          "target": "~/scripts/browser-close.js"
+        },
+        {
+          "path": "codex/replayio/scripts/close_browsers_and_upload.sh",
+          "type": "registry:file",
+          "target": "~/scripts/close_browsers_and_upload.sh"
+        },
+        {
+          "path": "codex/replayio/scripts/replayio_browser_lifecycle_hook.sh",
+          "type": "registry:file",
+          "target": "~/scripts/replayio_browser_lifecycle_hook.sh"
         },
         {
           "path": "codex/replayio/skills/replayio/SKILL.md",
@@ -50,9 +183,14 @@
           "target": "~/skills/replayio/references/workflows.md"
         },
         {
-          "path": "codex/replayio/skills/replay-qa-api/SKILL.md",
+          "path": "codex/replayio/skills/replayio/scripts/context.js",
           "type": "registry:file",
-          "target": "~/skills/replay-qa-api/SKILL.md"
+          "target": "~/skills/replayio/scripts/context.js"
+        },
+        {
+          "path": "codex/replayio/skills/replayio/scripts/package.json",
+          "type": "registry:file",
+          "target": "~/skills/replayio/scripts/package.json"
         }
       ]
     },

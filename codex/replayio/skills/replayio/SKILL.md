@@ -1,58 +1,90 @@
 ---
 name: "replayio"
-description: "Use when you need to record or inspect a Replay browser run, capture a playwright-cli MP4 video, embed video evidence in the response, test a local app with Replay Chromium, or use the Replay MCP server for deeper debugging of an uploaded recording."
+description: "Use when you need the direct Replay.io dev tools: record or inspect a Replay browser run, capture and embed a verified MP4 video, test a local app with Replay Chromium, or use the Replay MCP server for deeper debugging of an uploaded recording."
 ---
 
-# Replay Browser + Agent Browser + Replay MCP
+# Replay.io Pro Dev Tools
 
-Use the host **agent browser** with Replay Chromium whenever you need a time-travel debuggable Replay recording. Use `playwright-cli` when the user needs an MP4 artifact of the browser run or when the host workflow specifically requires CLI-driven browser control.
+Use the bundled browser lifecycle scripts for Replay browser work. Opening the browser starts Replay recording flags and WebM screencast capture; closing the browser stops capture, transcodes the WebM to a verified MP4 with ffmpeg, and uploads pending Replay recordings. The Codex `Stop` hook also runs close/upload cleanup as a safety net when a turn ends.
 
-Before opening the agent browser, point it at Replay Chromium:
+This pro package owns video evidence and direct Replay.io MCP debugging. Replay QA project, bug, journey, and exploration workflows belong to the separate `replay-qa` / `codex` package.
 
-```bash
-export AGENT_BROWSER_EXECUTABLE_PATH=/path/to/chromium
-```
+## Script Path
 
-For the standard Replay install on macOS, the executable is usually:
+Resolve the plugin script directory from the absolute path of this loaded skill:
 
 ```bash
-export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+SKILL_DIR="/absolute/path/to/skills/replayio"
+PLUGIN_ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
+SCRIPT_DIR="$PLUGIN_ROOT/scripts"
 ```
 
-This plugin does not install hooks. After a recorded Replay run, close the agent browser tab/session and manually upload pending recordings with `replayio upload-all || replayio upload` before reporting results. After a `playwright-cli` MP4 run, stop video recording before closing the session and embed the local `.mp4` in the response as Markdown.
+When Codex lists this skill, use that listed filesystem path for `SKILL_DIR`. Do not guess a project-local path unless this package was installed into the current project.
+
+Available scripts:
+
+| Script | Purpose |
+| --- | --- |
+| `browser-open.js` | Open a URL with Replay recording flags enabled and start WebM capture for a final MP4 artifact. |
+| `browser-close.js` | Stop capture, close the browser, transcode WebM to MP4 with ffmpeg, verify the MP4, and upload pending Replay recordings. |
+| `replayio_browser_lifecycle_hook.sh` | Codex post-tool hook that starts capture after raw `playwright-cli open` and cleans up after raw close commands. |
+| `close_browsers_and_upload.sh` | Codex stop hook that closes lingering sessions and uploads pending Replay recordings. |
+
+Run the skill-level setup check first when setup is unknown:
+
+```bash
+node "$SKILL_DIR/scripts/context.js"
+```
 
 ## MP4 Video Response Contract
 
-When using `playwright-cli` for browser work, start MP4 recording before meaningful interaction and stop it before reporting. Use an absolute `.mp4` path so the final response can embed the file directly:
+Only embed videos from this pro package. The Replay QA package should not instruct agents to embed videos.
+
+When the task needs shareable browser video, open and close the browser through the lifecycle scripts. Use an absolute `.mp4` path when you need a predictable artifact location:
 
 ```bash
 VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
-mkdir -p "$(dirname "$VIDEO_PATH")"
-npx --yes --package @playwright/cli playwright-cli open "$URL"
-npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
-npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
+node "$SCRIPT_DIR/browser-open.js" "$URL" --output "$VIDEO_PATH"
 ```
 
-After the run:
+Interact through `playwright-cli` commands or the host's attached CLI session. When the browser work is done, close through the lifecycle script:
 
 ```bash
-npx --yes --package @playwright/cli playwright-cli video-stop
-npx --yes --package @playwright/cli playwright-cli close
+node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
 ```
 
-Always include the MP4 in the response using Markdown image syntax whenever a video was produced:
+Embed the verified MP4 in the response using Markdown image syntax:
 
 ```markdown
-![video](/absolute/path/to/recording.mp4)
+![video](/absolute/path/to/browser-run.mp4)
 ```
 
-For example:
+Do not call separate MP4 start/stop commands in the normal flow. Browser open starts WebM capture for the final MP4; browser close stops capture, waits for the capture file to be flushed, runs ffmpeg synchronously, and verifies the MP4 before returning. Do not use Playwright `recordVideo` / BrowserContext video output or native Chromium video artifacts for requested video evidence. Chromium-native Playwright video commonly produces `.webm`; do not rename WebM files to `.mp4`. If the lifecycle cannot produce a valid `.mp4`, say so explicitly and report the blocker.
 
-```markdown
-![video](/Users/brettlamy/Documents/meeting-bot/tmp/recordings/meeting-bot-demo-2026-06-30/meeting-bot-demo.mp4)
+## Screencast And MP4 Encoding
+
+Playwright screencast/file capture writes WebM first. A call such as `await page.screencast.start({ path: "run.webm" })` does not make an MP4, and the final MP4 is not safe to embed until both of these have completed:
+
+1. Capture has stopped and flushed, for example `await page.screencast.stop()` or the equivalent `playwright-cli video-stop`.
+2. `ffmpeg` has exited successfully after transcoding the WebM into the requested `.mp4`.
+
+`browser-close.js` enforces that order synchronously. When it returns successfully, the response includes a verified MP4 path that can be embedded. If it fails because ffmpeg is missing, install ffmpeg and rerun:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt update && sudo apt install ffmpeg
+
+# Windows
+winget install Gyan.FFmpeg
+# or: choco install ffmpeg
+
+ffmpeg -version
 ```
 
-If the requested run cannot produce an MP4, say so explicitly and report the blocker.
+For custom encoders such as MP4/AV1, Playwright's raw-frame route can consume screencast frames with `onFrame` and feed them into ffmpeg or another encoder. That is useful for live streaming or specialized codecs, but the agent still must close the ffmpeg stdin/stream and wait for the encoder process to exit before embedding the file. Prefer the lifecycle scripts unless the task specifically requires live streamed encoding.
 
 ## Direct Agent Browser First
 
@@ -75,27 +107,21 @@ console.log(await tab.dev.logs({ levels: ["error"], limit: 50 }));
 await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
 ```
 
-Use the browser API's Playwright/DOM/vision helpers for interaction. If MP4 evidence is needed, use the `playwright-cli` workflow above instead of relying on screenshots alone.
+Use the browser API's Playwright/DOM/vision helpers for interaction when you are attached to the opened session. If MP4 evidence is needed, use the `browser-open.js` / `browser-close.js` lifecycle above instead of relying on screenshots alone.
 
 ## Close-When-Done Contract
 
-After you finish a test run, **before reporting the outcome to the user**, close the agent browser tab or session using the host browser API.
-
-In Browser-plugin hosts:
-
-```js
-await tab.close();
-```
-
-Then manually upload pending Replay recordings before your response:
+After you finish a lifecycle-script browser run, **before reporting the outcome to the user**, close through `browser-close.js`. This stops capture, closes the browser, transcodes and verifies the MP4 artifact, and uploads pending Replay recordings:
 
 ```bash
-replayio upload-all || replayio upload
+node "$SCRIPT_DIR/browser-close.js"
 ```
 
-Do not leave a browser open at the end of your turn. No hook will upload recordings for you, so run the upload command yourself after closing the tab/session. If you used `playwright-cli` video capture, run `video-stop`, close the CLI browser session, verify the `.mp4` path exists, and embed it in the response.
+For host agent-browser tabs not opened through `browser-open.js`, close the tab with the host browser API. The Codex `Stop` hook still attempts pending Replay uploads as a safety net, but video capture is only automatic for lifecycle-script browser sessions.
 
-**Exception - authentication wall:** If you must stop because the user needs to sign in interactively (see below), **do not** close the browser just to retry or reset. Leaving the session open preserves the headed window they should use; closing can end the recording before login is done.
+Do not leave a browser open at the end of your turn. If you forget, the Codex `Stop` hook attempts to stop capture, close lingering sessions, transcode video, and upload pending Replay recordings as a safety net. If you need the MP4 path or Replay upload result before responding, close explicitly with `browser-close.js`.
+
+**Exception - authentication wall:** If you must stop because the user needs to sign in interactively, do not close the browser just to retry or reset. Leaving the session open preserves the headed window they should use; closing can end the recording before login is done.
 
 ## Web App Authentication Walls
 
@@ -103,28 +129,25 @@ If you hit a **login or authorization barrier** you cannot complete with automat
 
 Instead:
 
-1. **Stop driving the browser** for this turn.
+1. Stop driving the browser for this turn.
 2. Briefly report what blocked you (URL or visible state).
-3. Ask the user to complete sign-in **in the existing headed browser session** when that is possible (or give them the exact URL if they must use another window).
-4. Ask them to **send another message when they are logged in** so you can attach to the same session or continue from an authenticated page.
+3. Ask the user to complete sign-in in the existing headed browser session when that is possible (or give them the exact URL if they must use another window).
+4. Ask them to send another message when they are logged in so you can attach to the same session or continue from an authenticated page.
 5. End your turn there; resume only after they confirm.
 
 Do not treat an auth wall as a generic error to brute-force by closing and reopening the Replay browser.
 
 ## The Reliable Path
 
-1. Verify the Replay runtime exists and the CLI is logged in.
-2. Resolve the Replay Chromium executable path.
-3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
-4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
-5. If Replay QA will be used, map `REPLAY_QA_API_KEY` from `SECRET_REPLAY_QA_API_KEY` when available.
-6. If testing a local app, start it first and verify the actual reachable URL.
-7. Drive and inspect the page directly with the host agent browser, or use `playwright-cli` with `video-start` when MP4 evidence is required.
-8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-9. If using `playwright-cli`, stop MP4 recording and close the CLI browser session before reporting.
-10. Close the agent browser tab/session when done.
-11. Run `replayio upload-all || replayio upload` before reporting Replay results.
-12. Embed any MP4 generated by the run in the final response as `![video](/absolute/path/to/file.mp4)`.
+1. Run `context.js` and verify Replay CLI, Replay Chromium, and recording flags.
+2. Export `AGENT_BROWSER_EXECUTABLE_PATH` to Replay Chromium before opening the agent browser.
+3. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
+4. If testing a local app, start it first and verify the actual reachable URL.
+5. Open the browser with `browser-open.js`; this starts Replay recording flags and WebM capture for the final MP4.
+6. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
+7. Close with `browser-close.js`; this stops capture, closes the CLI browser, waits for ffmpeg to finish MP4 output, verifies the MP4, and uploads pending Replay recordings.
+8. Let the Codex `Stop` hook run cleanup only as a safety net, not as the main way to get artifact paths.
+9. Embed any verified MP4 generated by the run in the final response as `![video](/absolute/path/to/file.mp4)`.
 
 ## Prerequisites
 
@@ -153,12 +176,31 @@ If not logged in, authenticate:
 replayio login
 ```
 
-## Replay MCP Authentication (Private Recordings)
+Check ffmpeg before MP4 work:
 
-Replay MCP calls are authorized **per user**. If tools return **Access denied**, you are usually not authenticated to Replay **as the same account that owns the recording**.
+```bash
+ffmpeg -version
+```
 
-- **Cursor**: open **Settings -> MCP**, select the **Replay** server, and complete **Sign in / Connect / Reconnect** so Cursor can finish the **OAuth** flow (including **dynamic client registration** when supported). Stay on `https://dispatch.replay.io/mcp` (do not swap in unrelated endpoints unless Replay explicitly instructs you to).
-- **Other hosts**: follow that host's MCP authentication mechanism (some environments use API keys or separate app connectors instead of OAuth).
+If ffmpeg is missing, install it:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt update && sudo apt install ffmpeg
+
+# Windows
+winget install Gyan.FFmpeg
+# or: choco install ffmpeg
+```
+
+## Replay MCP Authentication
+
+Replay MCP calls are authorized per user. If tools return **Access denied**, you are usually not authenticated to Replay as the same account that owns the recording.
+
+Stay on `https://dispatch.replay.io/mcp` unless Replay explicitly instructs you to use another endpoint.
 
 ## Agent Browser Executable Path
 
@@ -174,7 +216,7 @@ Verify the executable exists before browser work:
 test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
 ```
 
-Do not switch back to `playwright-cli` just to select the browser executable. If the agent browser was already running before the environment variable was set, restart or reconnect the agent browser so it picks up the Replay Chromium path. Use `playwright-cli` intentionally when you need its MP4 video commands.
+Do not switch back to `playwright-cli` just to select the browser executable. If the agent browser was already running before the environment variable was set, restart or reconnect the agent browser so it picks up the Replay Chromium path. Use `playwright-cli` intentionally when you need MP4 video commands.
 
 ## Recording Environment
 
@@ -186,20 +228,6 @@ export RECORD_REPLAY_VERBOSE='1'
 ```
 
 Set these explicitly before opening the agent browser.
-
-## Replay QA Environment
-
-If Replay QA will be used, map the Replay QA API secret before calling the Replay QA API skill:
-
-```bash
-if [ -z "${REPLAY_QA_API_KEY:-}" ] && [ -n "${SECRET_REPLAY_QA_API_KEY:-}" ]; then
-  export REPLAY_QA_API_KEY="$SECRET_REPLAY_QA_API_KEY"
-fi
-
-test -n "${REPLAY_QA_API_KEY:-}"
-```
-
-Never print the token. Replay QA tokens start with `lqa_`.
 
 ## Local App Check
 
@@ -216,110 +244,29 @@ curl -I http://127.0.0.1:4323/todos
 
 If a localhost request fails even though a process is clearly listening, you may be in a restricted sandbox. Rerun the browser and reachability checks outside the sandbox.
 
-## Reliable Agent Browser Workflow
-
-```bash
-export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
-export RECORD_ALL_CONTENT='1'
-export RECORD_REPLAY_VERBOSE='1'
-```
-
-Then use the host agent browser. In Browser-plugin hosts:
-
-```js
-const URL = "http://127.0.0.1:4323/todos";
-await browser.nameSession("replay todos");
-if (typeof tab === "undefined") {
-  globalThis.tab = await browser.tabs.new();
-}
-await tab.goto(URL);
-console.log(await tab.playwright.domSnapshot());
-await tab.playwright.getByLabel("New todo", { exact: false }).fill("Buy milk", {});
-await tab.playwright.getByRole("button", { name: "Add" }).click({});
-console.log(await tab.playwright.domSnapshot());
-console.log(await tab.dev.logs({ levels: ["error"], limit: 50 }));
-await nodeRepl.emitImage(await tab.screenshot({ fullPage: false }));
-await tab.close();
-```
-
-Use `domSnapshot()` before constructing locators, and again after DOM changes or navigation.
-
-## Reliable Playwright CLI MP4 Workflow
-
-Use this path when the task needs a shareable MP4 of the browser run:
-
-```bash
-export RECORD_ALL_CONTENT='1'
-export RECORD_REPLAY_VERBOSE='1'
-VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
-mkdir -p "$(dirname "$VIDEO_PATH")"
-npx --yes --package @playwright/cli playwright-cli open "$URL"
-npx --yes --package @playwright/cli playwright-cli video-start "$VIDEO_PATH" --size 1280x720
-npx --yes --package @playwright/cli playwright-cli video-show-actions --duration 750 --position top-right
-```
-
-Interact through `playwright-cli` commands or the host's attached CLI session. Before responding:
-
-```bash
-npx --yes --package @playwright/cli playwright-cli video-stop
-npx --yes --package @playwright/cli playwright-cli close
-test -f "$VIDEO_PATH"
-```
-
-Embed the verified file in the response:
-
-```markdown
-![video](/absolute/path/to/browser-run.mp4)
-```
-
-## Attach To An Already-Open Agent Browser
-
-If the agent browser is already running, attach through the host browser API instead of starting a new CLI session.
-
-In Browser-plugin hosts:
-
-```js
-const tabs = await browser.tabs.list();
-console.log(tabs);
-globalThis.tab = tabs.length > 0 ? await browser.tabs.get(tabs[0].id) : await browser.tabs.new();
-```
-
 ## Analyzing Uploaded Recordings
 
 First inspect the live run with direct agent-browser APIs. Once a recording has uploaded, use the `replay` MCP server tools only when you need deeper Replay-specific debugging beyond direct browser output. Codex connects to the Replay HTTP MCP server configured in `.mcp.json`; the connected Replay app id remains available in `.app.json` for app-level authentication and compatibility.
 
 ## Replay MCP Widgets
 
-Replay MCP tool calls may return both text `content` for the model and `structuredContent` for an MCP Apps widget. In MCP Apps-aware hosts, prefer the rendered widget for dense debugging views such as Logpoint output, React component trees, Redux actions, network details, screenshots, source code, profiles, and exception stacks.
+Replay MCP tool calls may return both text `content` for the model and `structuredContent` for an MCP Apps widget. In MCP Apps-aware hosts, prefer the rendered widget for dense debugging views such as Logpoint output, console output, React component trees, Redux actions, network details, screenshots, source code, profiles, and exception stacks.
 
 When a widget is visible, use it as evidence instead of restating every detail in prose. Use follow-up actions or related Replay MCP tools when the widget points to a specific point, source, component, request, or stack frame that needs deeper inspection.
-
-## Recording Uploads
-
-The plugin does not install hooks or upload pending Replay recordings automatically. After closing the recorded browser tab/session, upload recordings manually before reporting results:
-
-```bash
-replayio upload-all || replayio upload
-```
-
-If you need to inspect the upload state yourself:
-
-```bash
-replayio list
-```
 
 ## Troubleshooting
 
 - If the agent browser does not record, verify `AGENT_BROWSER_EXECUTABLE_PATH` points at Replay Chromium and restart/reconnect the agent browser after setting it.
 - If `test -x "$AGENT_BROWSER_EXECUTABLE_PATH"` fails, run `npx @replayio/replay install` or fix the path.
-- If no Replay URL is available before you respond, close the agent browser tab/session and run `replayio upload-all || replayio upload`.
-- If a `playwright-cli` MP4 was requested but no `.mp4` exists, run `video-stop`, check the absolute `VIDEO_PATH`, and report the blocker if the file still was not produced.
+- If no Replay URL is available before you respond, close the browser with `browser-close.js`; it uploads pending recordings.
+- If an MP4 was requested but no `.mp4` exists, check the `browser-close.js` output and report the blocker if the file still was not produced.
+- If `browser-close.js` says ffmpeg is missing, install ffmpeg with the command for the current OS and rerun the capture.
+- If the produced artifact is `.webm` or `browser-close.js` reports a WebM MIME type, do not embed it. The lifecycle should transcode WebM to MP4; report the ffmpeg/transcode blocker instead of renaming the file.
 - If the app is on localhost, verify the exact URL with `curl -I` before opening the browser.
 - If the requested port was busy, use the actual port printed by the dev server.
 - Prefer direct agent-browser inspection (DOM snapshots, console logs, screenshots, storage, cookies, network tools when available) before using the Replay MCP server.
 - If Replay authentication fails, run `replayio login` or reconnect the relevant Replay app/integration.
-- If Replay QA returns 401, verify `REPLAY_QA_API_KEY` is set from `SECRET_REPLAY_QA_API_KEY` and starts with `lqa_`.
-- If the **application under test** requires interactive login, follow **Web App Authentication Walls** - do not close-and-retry the browser session in a loop.
+- If the application under test requires interactive login, follow **Web App Authentication Walls** - do not close-and-retry the browser session in a loop.
 
 ## References
 

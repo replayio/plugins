@@ -1,7 +1,7 @@
 {
   "name": "replayio",
   "version": "0.1.0",
-  "description": "Record browser sessions with Replay Chromium or playwright-cli MP4 capture, manually upload Replay recordings after each run, and analyze recordings through Replay MCP tools or Replay QA.",
+  "description": "Direct Replay.io dev tools for Replay Chromium recording, ffmpeg-backed MP4 browser evidence, upload hooks, and Replay MCP debugging.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -18,18 +18,20 @@
     "recording",
     "mp4",
     "video",
-    "replay-qa",
-    "chatgpt-app"
+    "dev-tools",
+    "chatgpt-app",
+    "codex-pro"
   ],
   "skills": "./skills/",
   "apps": "./.app.json",
   "mcpServers": "./.mcp.json",
+  "hooks": "./hooks.json",
   "interface": {
-    "displayName": "Replay.io",
-    "shortDescription": "Record Replay sessions, capture MP4 browser videos, and inspect Replay or Replay QA results",
-    "longDescription": "Drive the host agent browser with Replay Chromium selected by AGENT_BROWSER_EXECUTABLE_PATH to capture time-travel debuggable recordings, or use playwright-cli video-start/video-stop when an MP4 browser recording is needed. Manually upload pending Replay recordings after the run, embed local MP4 evidence in Markdown responses, analyze uploaded recordings through Replay MCP tools, and create Replay QA projects for recording analysis or live-app exploration. In MCP Apps-aware hosts, Replay tool results can render rich debugging widgets for logpoints, console output, React trees, Redux state, network requests, screenshots, source code, profiles, and exception stacks.",
+    "displayName": "Replay.io Pro",
+    "shortDescription": "Direct Replay.io dev tools for recordings, ffmpeg-backed MP4 evidence, and Replay MCP debugging",
+    "longDescription": "Open browser sessions through packaged lifecycle scripts that enable Replay recording flags and start WebM screencast capture automatically, then stop capture, transcode to MP4 with ffmpeg, close the browser, verify the MP4 artifact, and upload pending Replay recordings when the browser closes. A Codex stop hook also runs close/upload cleanup as a safety net. Use Replay MCP tools to analyze uploaded recordings with rich debugging widgets for logpoints, console output, React trees, Redux state, network requests, screenshots, source code, profiles, and exception stacks.",
     "developerName": "Replay",
-    "category": "Coding",
+    "category": "Dev Tools",
     "capabilities": [
       "Interactive",
       "Read",
@@ -40,7 +42,7 @@
     "termsOfServiceURL": "https://replay.io/terms",
     "defaultPrompt": [
       "Record an agent browser session against this local app, embed the MP4 video, and analyze the resulting recording",
-      "Create a Replay QA project for this Replay recording and report the bugs"
+      "Inspect this uploaded Replay recording through Replay MCP and summarize the root cause evidence"
     ],
     "brandColor": "#F02D5E",
     "composerIcon": "./assets/replayio.svg",

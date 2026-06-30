@@ -5,17 +5,21 @@ This repository is a shadcn GitHub registry for Replay.io agent and editor plugi
 Install a bundle with `shadcn add`:
 
 ```bash
-npx shadcn@latest add replayio/agent-harness-plugins/codex
-npx shadcn@latest add replayio/agent-harness-plugins/cursor
-npx shadcn@latest add replayio/agent-harness-plugins/claude-code
-npx shadcn@latest add replayio/agent-harness-plugins/opencode
-npx shadcn@latest add replayio/agent-harness-plugins/obvious-ai
+npx shadcn@latest add replayio/plugins/codex
+npx shadcn@latest add replayio/plugins/codex-pro
+npx shadcn@latest add replayio/plugins/cursor
+npx shadcn@latest add replayio/plugins/claude-code
+npx shadcn@latest add replayio/plugins/opencode
+npx shadcn@latest add replayio/plugins/obvious-ai
 ```
 
-Install the Codex bundle as a Codex plugin marketplace:
+`codex` is Replay QA for production, staging, and PR preview QA runs. `codex-pro` is the direct Replay.io dev tools bundle with Replay MCP, Replay Chromium, browser lifecycle screencast capture, ffmpeg-backed MP4 output, upload hooks, and MP4 video embedding.
+
+Install the Codex bundles as a Codex plugin marketplace:
 
 ```bash
-codex plugin marketplace add https://github.com/replayio/agent-harness-plugins --ref main
+codex plugin marketplace add https://github.com/replayio/plugins --ref main
+codex plugin add replay-qa@replayio-plugins
 codex plugin add replayio@replayio-plugins
 ```
 
@@ -23,9 +27,10 @@ If you use sparse checkout when adding the marketplace, include both the marketp
 the plugin bundle path:
 
 ```bash
-codex plugin marketplace add https://github.com/replayio/agent-harness-plugins \
+codex plugin marketplace add https://github.com/replayio/plugins \
   --ref main \
   --sparse .agents/plugins/marketplace.json \
+  --sparse codex/replay-qa \
   --sparse codex/replayio
 ```
 
@@ -33,7 +38,8 @@ codex plugin marketplace add https://github.com/replayio/agent-harness-plugins \
 
 | Item | Installs |
 | --- | --- |
-| `codex` | Codex plugin bundle installed to `.codex-plugin/`, `skills/replayio/`, `skills/replay-qa-api/`, `assets/`, and metadata files. |
+| `codex` | Codex Replay QA app installed to `.codex-plugin/`, `skills/replay-qa/`, `assets/`, and packaged scripts for project setup, status, bugs, journeys, test runs, explorations, and fix verification. |
+| `codex-pro` | Codex Replay.io Pro dev tools installed to `.codex-plugin/`, `.mcp.json`, `.app.json`, `hooks.json`, `scripts/`, `skills/replayio/`, and `assets/`, with browser-open/browser-close lifecycle scripts plus hooks for screencast capture, ffmpeg-backed MP4 output, and Replay uploads. |
 | `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
 | `claude-code` | Claude Code Replay QA plugin installed to `.claude/skills/replay-qa/`, including plugin commands and script-backed skill helpers. |
 | `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, and `opencode.json`. |
