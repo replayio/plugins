@@ -57,6 +57,10 @@ function defaultWebmPath(output) {
   return path.join(parsed.dir, `${parsed.name}.capture.webm`);
 }
 
+function defaultSessionName() {
+  return `replayio-${Date.now()}`;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const url = args.url || args._[0];
 if (!url) {
@@ -71,6 +75,8 @@ const webmPath = path.resolve(args.webmPath || process.env.REPLAYIO_WEBM_PATH ||
 if (path.extname(webmPath).toLowerCase() !== ".webm") {
   throw new Error(`WebM capture path must end in .webm, got ${webmPath}`);
 }
+const sessionName = String(args.session || process.env.REPLAYIO_PLAYWRIGHT_SESSION || defaultSessionName());
+const sessionArg = `-s=${sessionName}`;
 
 const statePath = path.join(process.cwd(), ".replay", "browser-session.json");
 fs.mkdirSync(path.dirname(output), { recursive: true });
@@ -84,10 +90,11 @@ const env = {
   RECORD_REPLAY_VERBOSE: process.env.RECORD_REPLAY_VERBOSE || "1",
 };
 
-runPlaywright(["open", url], env);
-runPlaywright(["video-start", webmPath, "--size", args.size || "1280x720"], env);
+runPlaywright([sessionArg, "open", url], env);
+runPlaywright([sessionArg, "video-start", webmPath, "--size", args.size || "1280x720"], env);
 runPlaywright(
   [
+    sessionArg,
     "video-show-actions",
     "--duration",
     String(args.actionDuration || 750),
@@ -104,6 +111,8 @@ const state = {
   webm_path: webmPath,
   capture_format: "webm",
   encoder: "ffmpeg",
+  playwright_session: sessionName,
+  playwright_command_prefix: `npx --yes --package @playwright/cli playwright-cli -s=${JSON.stringify(sessionName).slice(1, -1)}`,
   started_at: new Date().toISOString(),
   replay_chromium_path: replayChromium,
 };

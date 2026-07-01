@@ -50,6 +50,8 @@ node "$SCRIPT_DIR/browser-open.js" "$URL" --output "$VIDEO_PATH"
 Interact through `playwright-cli` commands or the host's attached CLI session. When the browser work is done, close through the lifecycle script:
 
 ```bash
+PLAYWRIGHT_SESSION="<playwright_session from browser-open.js output>"
+npx --yes --package @playwright/cli playwright-cli -s="$PLAYWRIGHT_SESSION" snapshot
 node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
 ```
 
@@ -59,7 +61,9 @@ Embed the verified MP4 in the response using Markdown image syntax:
 ![video](/absolute/path/to/browser-run.mp4)
 ```
 
-Do not call separate MP4 start/stop commands in the normal flow. Browser open starts WebM capture for the final MP4; browser close stops capture, waits for the capture file to be flushed, runs ffmpeg synchronously, and verifies the MP4 before returning. Do not use Playwright `recordVideo` / BrowserContext video output or native Chromium video artifacts for requested video evidence. Chromium-native Playwright video commonly produces `.webm`; do not rename WebM files to `.mp4`. If the lifecycle cannot produce a valid `.mp4`, say so explicitly and report the blocker.
+Do not call separate MP4 start/stop commands in the normal flow. Browser open starts WebM capture for the final MP4 in a named Playwright CLI session; use the returned `playwright_session` with `playwright-cli -s="$PLAYWRIGHT_SESSION"` for every CLI interaction in that run. Browser close stops capture in that same session, waits for the capture file to be flushed, runs ffmpeg synchronously, and verifies the MP4 before returning. Do not use Playwright `recordVideo` / BrowserContext video output or native Chromium video artifacts for requested video evidence. Chromium-native Playwright video commonly produces `.webm`; do not rename WebM files to `.mp4`. If the lifecycle cannot produce a valid `.mp4`, say so explicitly and report the blocker.
+
+Treat Replay upload as separate from local video creation. If `browser-close.js` returns a verified `video` object but the upload helper fails, the local MP4 is still valid and can be embedded; report the Replay upload failure separately.
 
 ## Screencast And MP4 Encoding
 
@@ -69,6 +73,14 @@ Playwright screencast/file capture writes WebM first. A call such as `await page
 2. `ffmpeg` has exited successfully after transcoding the WebM into the requested `.mp4`.
 
 `browser-close.js` enforces that order synchronously. When it returns successfully, the response includes a verified MP4 path that can be embedded. If it fails because ffmpeg is missing, install ffmpeg and rerun:
+
+Do not be confused if a file ending in `.mp4` initially reports `video/webm`. `playwright-cli video-start` can write WebM bytes to whatever path it is given, including a requested `.mp4` path. That file is the capture source, not the final MP4. Prefer the lifecycle default, which writes the source to `*.capture.webm`. If a raw or older flow already wrote WebM bytes to the `.mp4` path, do not move the file or pass a separate source flag; just run:
+
+```bash
+node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
+```
+
+`browser-close.js` will detect the WebM source at the output path, transcode it through ffmpeg, and overwrite the path with a verified MP4 only after the encode succeeds. It also auto-detects adjacent `*.capture.webm`, `*.source.webm`, and `*.webm` files with the same basename if an older run already moved the source aside.
 
 ```bash
 # macOS
@@ -85,6 +97,50 @@ ffmpeg -version
 ```
 
 For custom encoders such as MP4/AV1, Playwright's raw-frame route can consume screencast frames with `onFrame` and feed them into ffmpeg or another encoder. That is useful for live streaming or specialized codecs, but the agent still must close the ffmpeg stdin/stream and wait for the encoder process to exit before embedding the file. Prefer the lifecycle scripts unless the task specifically requires live streamed encoding.
+
+## Video Duration And Stale Frames
+
+`browser-close.js` compresses stale visual time by default. It transcodes with ffmpeg's duplicate-frame removal filter:
+
+```text
+mpdecimate,setpts=(3*N)/(30*TB),fps=30
+```
+
+This removes near-identical frames and resets timestamps so idle waits do not turn into long static video segments. The default `stale-time-scale` is `3`, which makes the compressed video about 3x longer than the most aggressive duplicate-removal cadence and keeps UI state changes readable. Use this default for evidence videos unless the user explicitly needs real-time duration fidelity.
+
+Tune or disable stale-frame compression only when needed:
+
+```bash
+# Keep real-time duration, including idle waits.
+node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH" --compress-stale false
+
+# Tune output.
+node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH" --fps 24 --stale-time-scale 2 --crf 30 --preset veryfast
+```
+
+Environment equivalents are `REPLAYIO_COMPRESS_STALE_FRAMES=0`, `REPLAYIO_STALE_TIME_SCALE`, `REPLAYIO_MP4_FPS`, `REPLAYIO_MP4_CRF`, and `REPLAYIO_MP4_PRESET`.
+
+The final answer should report when stale-frame compression was applied if duration or timing matters.
+
+## Emulation Choice For App Behavior
+
+Before judging login, checkout, email, database, OAuth/OIDC, payment, or other backend-dependent flows in a local app, decide whether the run is testing the app **as-is** or with **emulation**.
+
+Recommend emulation when the local app appears to depend on services that are absent in the current run, including auth/session backends, databases, API routes, payment providers, email providers, object storage, or external OAuth. Also recommend emulation when a static prototype has a login form but no logged-in app route. In that case, a failed login redirect is evidence that the local/static app has no implemented auth flow, not proof that a production auth flow is broken.
+
+When emulation would materially change the result, stop and elicit a real user choice before recording:
+
+```text
+This app has a login/backend-dependent flow. I can either:
+1. Test the local app as-is and report missing auth/backend behavior.
+2. Use emulation/mocks where possible so login can reach the intended logged-in state.
+
+Which mode should I use for this run? Also say whether to remember that choice for this app.
+```
+
+If the user chooses as-is, label the findings as "as-run local behavior" and do not imply the app was tested with backend/auth emulation. If the user chooses emulation, implement or enable the smallest realistic emulation needed for the flow before recording, then explain what was emulated in the final result.
+
+If the user explicitly asks to remember the choice, or answers that the choice should be remembered for that app, create a small memory note using the host's memory mechanism and include the app/repo path, chosen mode, date, and reason. In Codex memory-enabled hosts, write the note only through the allowed memory-update path; do not edit memory registry files directly.
 
 ## Direct Agent Browser First
 
@@ -143,9 +199,9 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 2. Export `AGENT_BROWSER_EXECUTABLE_PATH` to Replay Chromium before opening the agent browser.
 3. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
 4. If testing a local app, start it first and verify the actual reachable URL.
-5. Open the browser with `browser-open.js`; this starts Replay recording flags and WebM capture for the final MP4.
-6. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-7. Close with `browser-close.js`; this stops capture, closes the CLI browser, waits for ffmpeg to finish MP4 output, verifies the MP4, and uploads pending Replay recordings.
+5. Open the browser with `browser-open.js`; this starts Replay recording flags and WebM capture for the final MP4 and returns `playwright_session`.
+6. Use fresh DOM snapshots or screenshots after navigation and major UI changes. If using `playwright-cli`, pass `-s="$PLAYWRIGHT_SESSION"` on every command so you do not attach to a stale default session.
+7. Close with `browser-close.js`; this stops capture in the named CLI session, closes the CLI browser, waits for ffmpeg to finish MP4 output, verifies the MP4, and uploads pending Replay recordings.
 8. Let the Codex `Stop` hook run cleanup only as a safety net, not as the main way to get artifact paths.
 9. Embed any verified MP4 generated by the run in the final response as `![video](/absolute/path/to/file.mp4)`.
 
@@ -261,7 +317,9 @@ When a widget is visible, use it as evidence instead of restating every detail i
 - If no Replay URL is available before you respond, close the browser with `browser-close.js`; it uploads pending recordings.
 - If an MP4 was requested but no `.mp4` exists, check the `browser-close.js` output and report the blocker if the file still was not produced.
 - If `browser-close.js` says ffmpeg is missing, install ffmpeg with the command for the current OS and rerun the capture.
-- If the produced artifact is `.webm` or `browser-close.js` reports a WebM MIME type, do not embed it. The lifecycle should transcode WebM to MP4; report the ffmpeg/transcode blocker instead of renaming the file.
+- If a pre-close `.mp4` path reports `video/webm`, that is expected intermediate capture output. Run `browser-close.js`; do not embed it yet.
+- If `browser-close.js` returns a verified `video` object but upload failed, embed the local MP4 and report the upload failure separately.
+- If the final post-close artifact is `.webm` or `browser-close.js` reports the output MIME as WebM, do not embed it. The lifecycle should transcode WebM to MP4; report the ffmpeg/transcode blocker instead of renaming the file.
 - If the app is on localhost, verify the exact URL with `curl -I` before opening the browser.
 - If the requested port was busy, use the actual port printed by the dev server.
 - Prefer direct agent-browser inspection (DOM snapshots, console logs, screenshots, storage, cookies, network tools when available) before using the Replay MCP server.
