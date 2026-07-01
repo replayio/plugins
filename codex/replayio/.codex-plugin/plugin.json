@@ -1,6 +1,6 @@
 {
   "name": "replayio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Direct Replay.io dev tools for Replay Chromium recording, ffmpeg-backed MP4 browser evidence, upload hooks, and Replay MCP debugging.",
   "author": {
     "name": "Replay",
