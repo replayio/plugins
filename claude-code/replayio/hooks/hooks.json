@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/replayio_browser_lifecycle_hook.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/replayio_browser_lifecycle_hook.sh\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/close_browsers_and_upload.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/close_browsers_and_upload.sh\""
           }
         ]
       }
