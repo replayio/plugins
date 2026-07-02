@@ -13,7 +13,7 @@ npx shadcn@latest add replayio/plugins/opencode
 npx shadcn@latest add replayio/plugins/obvious-ai
 ```
 
-`codex` is Replay QA for production, staging, and PR preview QA runs. `codex-pro` is the direct Replay.io dev tools bundle with Replay MCP, Replay Chromium, browser lifecycle screencast capture, ffmpeg-backed MP4 output, upload hooks, and MP4 video embedding.
+`codex` is Replay QA for production, staging, and PR preview QA runs. `codex-pro` is the direct Replay.io dev tools bundle with Replay MCP, Replay Chromium, worker/critic proof-loop prompts, browser lifecycle screencast capture, ffmpeg-backed MP4 output, side-by-side video stitching, upload hooks, and MP4 video embedding.
 
 Install the Codex bundles as a Codex plugin marketplace:
 
@@ -39,7 +39,7 @@ codex plugin marketplace add https://github.com/replayio/plugins \
 | Item | Installs |
 | --- | --- |
 | `codex` | Codex Replay QA app installed to `.codex-plugin/`, `skills/replay-qa/`, `assets/`, and packaged scripts for project setup, status, bugs, journeys, test runs, explorations, and fix verification. |
-| `codex-pro` | Codex Replay.io Pro dev tools installed to `.codex-plugin/`, `.mcp.json`, `.app.json`, `hooks.json`, `scripts/`, `skills/replayio/`, and `assets/`, with browser-open/browser-close lifecycle scripts plus hooks for screencast capture, ffmpeg-backed MP4 output, and Replay uploads. |
+| `codex-pro` | Codex Replay.io Pro dev tools installed to `.codex-plugin/`, `.mcp.json`, `.app.json`, `agents/openai.yaml`, `hooks.json`, `scripts/`, `skills/replayio/`, and `assets/`, with worker/critic proof-loop prompts, browser-open/browser-close lifecycle scripts, a side-by-side stitch helper, and hooks for screencast capture, ffmpeg-backed MP4 output, and Replay uploads. |
 | `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
 | `claude-code` | Claude Code Replay QA plugin installed to `.claude/skills/replay-qa/`, including plugin commands and script-backed skill helpers. |
 | `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, and `opencode.json`. |

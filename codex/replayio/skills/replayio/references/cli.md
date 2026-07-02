@@ -96,6 +96,65 @@ ffmpeg -version
 
 The raw-frame screencast route with `onFrame` can feed frames into ffmpeg for custom streaming encoders, but the final video is still only safe to embed after the ffmpeg process exits successfully.
 
+## Worker/Critic Prompt Templates
+
+The Pro bundle includes reusable prompt templates for a Replay proof loop:
+
+```bash
+WORKER_PROMPT="$SKILL_DIR/subagents/replay-worker.md"
+CRITIC_PROMPT="$SKILL_DIR/subagents/replay-critic.md"
+```
+
+Use the worker prompt for the implementation subagent that edits code and records the final session. Use the critic prompt for the read-only subagent that inspects the uploaded Replay recording against the requirements and diff. The critic should use Replay MCP only; it should not run shell commands, edit files, or open a fresh browser.
+
+## Multi-Session And Side-By-Side Output
+
+For two browser sessions, name each session and pass that name to every command:
+
+```bash
+node "$SCRIPT_DIR/browser-open.js" "$URL" --session "$RUN_ID-ada" --output "$(pwd)/recordings/$RUN_ID-ada.mp4"
+node "$SCRIPT_DIR/browser-open.js" "$URL" --session "$RUN_ID-linus" --output "$(pwd)/recordings/$RUN_ID-linus.mp4"
+npx --yes --package @playwright/cli playwright-cli -s="$RUN_ID-ada" snapshot
+npx --yes --package @playwright/cli playwright-cli -s="$RUN_ID-linus" snapshot
+node "$SCRIPT_DIR/browser-close.js" --session "$RUN_ID-ada"
+node "$SCRIPT_DIR/browser-close.js" --session "$RUN_ID-linus"
+```
+
+`browser-open.js` writes per-session state. `browser-close.js --session "$RUN_ID-ada"` reads that state, so the Ada and Linus outputs do not overwrite each other.
+
+Use `stitch-videos.js` to render a combined MP4:
+
+```bash
+node "$SCRIPT_DIR/stitch-videos.js" --output "$(pwd)/recordings/$RUN_ID.mp4" "$LEFT_VIDEO" "$RIGHT_VIDEO"
+```
+
+## `jq` Filtering For Uploads
+
+If `jq` is missing, install it first:
+
+```bash
+brew install jq
+# or: sudo apt update && sudo apt install jq
+# or: winget install jqlang.jq
+```
+
+Use `jq` to upload only finished recordings from the current run:
+
+```bash
+mapfile -t replay_ids < <(
+  replayio list --json | jq -r --arg started "$STARTED_AT" --arg room "$ROOM" '
+    .[]
+    | select(.date >= $started)
+    | select((.metadata.uri // "" | contains($room)) or (.metadata.title // "" | contains($room)))
+    | select(.recordingStatus == "finished")
+    | select((.uploadStatus // "not_uploaded") != "uploaded")
+    | .id
+  '
+)
+
+[ "${#replay_ids[@]}" -gt 0 ] && replayio upload "${replay_ids[@]}"
+```
+
 Before testing auth/backend-dependent local app behavior, choose with the user whether to run as-is or with emulation. Recommend emulation when login, checkout, email, database, OAuth, or API behavior depends on services that are absent in the local run. If the user chooses as-is, label missing login/chat redirects as local as-run behavior rather than production-auth bugs.
 
 ## Inspection

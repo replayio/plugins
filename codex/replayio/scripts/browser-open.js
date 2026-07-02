@@ -61,6 +61,14 @@ function defaultSessionName() {
   return `replayio-${Date.now()}`;
 }
 
+function safeSessionName(sessionName) {
+  return String(sessionName).replace(/[^a-zA-Z0-9_.-]+/g, "_") || "default";
+}
+
+function sessionStatePath(sessionName) {
+  return path.join(process.cwd(), ".replay", `browser-session-${safeSessionName(sessionName)}.json`);
+}
+
 const args = parseArgs(process.argv.slice(2));
 const url = args.url || args._[0];
 if (!url) {
@@ -79,6 +87,7 @@ const sessionName = String(args.session || process.env.REPLAYIO_PLAYWRIGHT_SESSI
 const sessionArg = `-s=${sessionName}`;
 
 const statePath = path.join(process.cwd(), ".replay", "browser-session.json");
+const perSessionStatePath = sessionStatePath(sessionName);
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.mkdirSync(path.dirname(webmPath), { recursive: true });
 fs.mkdirSync(path.dirname(statePath), { recursive: true });
@@ -117,4 +126,5 @@ const state = {
   replay_chromium_path: replayChromium,
 };
 fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
-process.stdout.write(`${JSON.stringify({ ...state, state_path: statePath }, null, 2)}\n`);
+fs.writeFileSync(perSessionStatePath, `${JSON.stringify(state, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ...state, state_path: statePath, session_state_path: perSessionStatePath }, null, 2)}\n`);

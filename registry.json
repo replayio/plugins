@@ -115,7 +115,7 @@
       "name": "codex-pro",
       "type": "registry:item",
       "title": "Replay.io Pro Codex Plugin",
-      "description": "Codex Replay.io dev tools bundle for the direct Replay MCP server, Replay Chromium recordings, browser lifecycle screencast capture, ffmpeg-backed MP4 output, upload hooks, and debugging widgets.",
+      "description": "Codex Replay.io dev tools bundle for the direct Replay MCP server, Replay Chromium recordings, worker/critic proof loops, browser lifecycle screencast capture, ffmpeg-backed MP4 output, side-by-side video stitching, upload hooks, and debugging widgets.",
       "files": [
         {
           "path": "codex/replayio/.app.json",
@@ -148,6 +148,11 @@
           "target": "~/assets/replayio.svg"
         },
         {
+          "path": "codex/replayio/agents/openai.yaml",
+          "type": "registry:file",
+          "target": "~/agents/openai.yaml"
+        },
+        {
           "path": "codex/replayio/scripts/browser-open.js",
           "type": "registry:file",
           "target": "~/scripts/browser-open.js"
@@ -156,6 +161,11 @@
           "path": "codex/replayio/scripts/browser-close.js",
           "type": "registry:file",
           "target": "~/scripts/browser-close.js"
+        },
+        {
+          "path": "codex/replayio/scripts/stitch-videos.js",
+          "type": "registry:file",
+          "target": "~/scripts/stitch-videos.js"
         },
         {
           "path": "codex/replayio/scripts/close_browsers_and_upload.sh",
@@ -171,6 +181,16 @@
           "path": "codex/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replayio/SKILL.md"
+        },
+        {
+          "path": "codex/replayio/skills/replayio/subagents/replay-worker.md",
+          "type": "registry:file",
+          "target": "~/skills/replayio/subagents/replay-worker.md"
+        },
+        {
+          "path": "codex/replayio/skills/replayio/subagents/replay-critic.md",
+          "type": "registry:file",
+          "target": "~/skills/replayio/subagents/replay-critic.md"
         },
         {
           "path": "codex/replayio/skills/replayio/references/cli.md",

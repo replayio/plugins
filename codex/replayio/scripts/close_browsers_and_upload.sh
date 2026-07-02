@@ -15,7 +15,7 @@ if command -v npx >/dev/null 2>&1; then
 fi
 
 if command -v replayio >/dev/null 2>&1; then
-  replayio upload-all >/dev/null 2>&1 || replayio upload >/dev/null 2>&1 || true
+  replayio upload >/dev/null 2>&1 || true
 fi
 
 exit 0

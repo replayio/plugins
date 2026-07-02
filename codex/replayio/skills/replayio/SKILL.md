@@ -17,6 +17,7 @@ Resolve the plugin script directory from the absolute path of this loaded skill:
 SKILL_DIR="/absolute/path/to/skills/replayio"
 PLUGIN_ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 SCRIPT_DIR="$PLUGIN_ROOT/scripts"
+SUBAGENT_DIR="$SKILL_DIR/subagents"
 ```
 
 When Codex lists this skill, use that listed filesystem path for `SKILL_DIR`. Do not guess a project-local path unless this package was installed into the current project.
@@ -27,14 +28,41 @@ Available scripts:
 | --- | --- |
 | `browser-open.js` | Open a URL with Replay recording flags enabled and start WebM capture for a final MP4 artifact. |
 | `browser-close.js` | Stop capture, close the browser, transcode WebM to MP4 with ffmpeg, verify the MP4, and upload pending Replay recordings. |
+| `stitch-videos.js` | Stitch exactly two browser videos into one verified side-by-side MP4. |
 | `replayio_browser_lifecycle_hook.sh` | Codex post-tool hook that starts capture after raw `playwright-cli open` and cleans up after raw close commands. |
 | `close_browsers_and_upload.sh` | Codex stop hook that closes lingering sessions and uploads pending Replay recordings. |
+
+Available subagent prompt templates:
+
+| Prompt | Purpose |
+| --- | --- |
+| `subagents/replay-worker.md` | Implementation worker that builds, self-validates in the browser, and records the final proof session. |
+| `subagents/replay-critic.md` | Read-only adversarial critic that inspects the Replay recording against requirements and diff evidence. |
 
 Run the skill-level setup check first when setup is unknown:
 
 ```bash
 node "$SKILL_DIR/scripts/context.js"
 ```
+
+## Build-And-Falsify Subagents
+
+Use the worker/critic loop when the user asks for Replay-backed proof, adversarial verification, "agents that prove their work", or a UI/code change whose browser behavior should be validated by runtime evidence.
+
+Before spawning or simulating the loop, read both prompt templates from `"$SUBAGENT_DIR"`. The worker and critic must be separate roles:
+
+1. Worker: edits code, runs normal checks, drives the app, and records the final happy-path-plus-edge-path walkthrough under Replay Chromium.
+2. Critic: receives requirements, the worker claim, the uploaded recording IDs/URLs, and the PR diff as static input. It reviews only the evidence: Replay MCP plus the supplied diff. It must not edit files, run shell commands, or drive a fresh browser.
+
+If the host has a real subagent or multi-agent tool, spawn the worker and critic with the matching prompt templates. If no subagent tool is available, run the roles sequentially in the main thread while preserving the critic's read-only constraints.
+
+Loop on the critic verdict:
+
+- `needs_revision`: send the finding back to the worker, change the implementation, record a new proof session, and re-run the critic.
+- `needs_evidence`: keep the implementation, record a better session that exercises the missing path, and re-run the critic.
+- `satisfied`: report the proof artifacts and any suite promotion recommendation.
+
+The recording is the unit of evidence. A screenshot, DOM snapshot, local MP4, or passing self-check is useful supporting context, but the critic should treat the uploaded Replay timeline as the source of truth for runtime state, network requests, source execution, exceptions, and mock-data audit.
 
 ## MP4 Video Response Contract
 
@@ -64,6 +92,106 @@ Embed the verified MP4 in the response using Markdown image syntax:
 Do not call separate MP4 start/stop commands in the normal flow. Browser open starts WebM capture for the final MP4 in a named Playwright CLI session; use the returned `playwright_session` with `playwright-cli -s="$PLAYWRIGHT_SESSION"` for every CLI interaction in that run. Browser close stops capture in that same session, waits for the capture file to be flushed, runs ffmpeg synchronously, and verifies the MP4 before returning. Do not use Playwright `recordVideo` / BrowserContext video output or native Chromium video artifacts for requested video evidence. Chromium-native Playwright video commonly produces `.webm`; do not rename WebM files to `.mp4`. If the lifecycle cannot produce a valid `.mp4`, say so explicitly and report the blocker.
 
 Treat Replay upload as separate from local video creation. If `browser-close.js` returns a verified `video` object but the upload helper fails, the local MP4 is still valid and can be embedded; report the Replay upload failure separately.
+
+## Purpose-Built `record:replay` Scripts
+
+When a local app needs repeatable full-stack recording, add a project-specific `record:replay` script instead of driving ad hoc browser sessions. This is the right pattern when the app needs local emulators, seeded auth, a database/API service, multiple browser sessions, or a side-by-side proof video.
+
+Build the app script around these parts:
+
+1. Start the required emulator(s) and the app on explicit local ports.
+2. Wait for the app health URL before opening browsers.
+3. Use a fresh room/run id such as `replay-${Date.now()}` and pass it through env.
+4. Run a dedicated Replay Playwright config with two workers/sessions.
+5. List recordings before and after the run, then poll until the new recordings are `finished`.
+6. Upload only `finished` recordings that are not already uploaded.
+7. Find the two Playwright video artifacts and create a side-by-side MP4 with `stitch-videos.js`.
+8. Write `recordings/latest.json` with the room, URLs, local IDs, MP4 path, source videos, and any upload warnings.
+9. Stop the app and emulator processes in `finally`.
+
+Do not upload a recording whose `recordingStatus` is still `recording`; this commonly produces missing Replay URLs or one-sided success. Poll `replayio list --json` until both target recordings are `finished`, with a bounded timeout. If one stays stuck, keep the verified local MP4, report the stuck local ID, and do not pretend both Replay URLs are ready.
+
+For multi-session lifecycle-script recordings, name every session explicitly and close the same named session:
+
+```bash
+node "$SCRIPT_DIR/browser-open.js" "$URL" \
+  --session "chat-ada-$RUN_ID" \
+  --output "$(pwd)/recordings/$RUN_ID-ada.mp4"
+
+node "$SCRIPT_DIR/browser-open.js" "$URL" \
+  --session "chat-linus-$RUN_ID" \
+  --output "$(pwd)/recordings/$RUN_ID-linus.mp4"
+
+npx --yes --package @playwright/cli playwright-cli -s="chat-ada-$RUN_ID" snapshot
+npx --yes --package @playwright/cli playwright-cli -s="chat-linus-$RUN_ID" snapshot
+
+node "$SCRIPT_DIR/browser-close.js" --session "chat-ada-$RUN_ID"
+node "$SCRIPT_DIR/browser-close.js" --session "chat-linus-$RUN_ID"
+```
+
+Do not rely on the default Playwright CLI session when more than one browser is open. `browser-open.js` writes both a latest state file and a per-session state file; `browser-close.js --session <name>` reads the matching per-session state so outputs do not get crossed.
+
+For Playwright-worker recordings, prefer the app's `@replayio/playwright` config for recording and use the plugin stitch helper for the MP4:
+
+```bash
+node "$SCRIPT_DIR/stitch-videos.js" \
+  --output "$(pwd)/recordings/$RUN_ID.mp4" \
+  "$(pwd)/test-results/replay/ada/video.webm" \
+  "$(pwd)/test-results/replay/linus/video.webm"
+```
+
+The dedicated project script can use the same helper by resolving `SCRIPT_DIR` from the installed skill path or by invoking the installed plugin root when available.
+
+## Filtering Recordings With `jq`
+
+Install `jq` when it is not present:
+
+```bash
+if ! command -v jq >/dev/null 2>&1; then
+  # macOS
+  brew install jq
+
+  # Ubuntu/Debian
+  # sudo apt update && sudo apt install jq
+
+  # Windows
+  # winget install jqlang.jq
+fi
+```
+
+Use `jq` to keep `replayio list --json` output small and to avoid uploading the wrong recording:
+
+```bash
+STARTED_AT="2026-07-01T00:00:00.000Z"
+ROOM="replay-123"
+
+replayio list --json | jq -r --arg started "$STARTED_AT" --arg room "$ROOM" '
+  .[]
+  | select(.date >= $started)
+  | select((.metadata.uri // "" | contains($room)) or (.metadata.title // "" | contains($room)))
+  | [.id, .recordingStatus, (.uploadStatus // "not_uploaded"), (.metadata.title // ""), (.metadata.uri // "")]
+  | @tsv
+'
+```
+
+Upload only finished, not-yet-uploaded IDs:
+
+```bash
+mapfile -t replay_ids < <(
+  replayio list --json | jq -r --arg started "$STARTED_AT" --arg room "$ROOM" '
+    .[]
+    | select(.date >= $started)
+    | select((.metadata.uri // "" | contains($room)) or (.metadata.title // "" | contains($room)))
+    | select(.recordingStatus == "finished")
+    | select((.uploadStatus // "not_uploaded") != "uploaded")
+    | .id
+  '
+)
+
+if [ "${#replay_ids[@]}" -gt 0 ]; then
+  replayio upload "${replay_ids[@]}"
+fi
+```
 
 ## Screencast And MP4 Encoding
 

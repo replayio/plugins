@@ -1,0 +1,6 @@
+interface:
+  display_name: "Replay.io Pro"
+  short_description: "Replay MCP, Replay Chromium, MP4 evidence, and worker/critic proof loops"
+  icon_small: "./assets/replayio.svg"
+  icon_large: "./assets/replayio.svg"
+  default_prompt: "Use Replay.io Pro to prove UI work with a Replay recording and an adversarial critic."

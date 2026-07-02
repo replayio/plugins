@@ -56,6 +56,20 @@ const context = {
       error: result.ok ? undefined : result.stderr,
     };
   })(),
+  jq: (() => {
+    const result = run("jq", ["--version"]);
+    return {
+      ok: result.ok,
+      version: result.ok ? firstLine(result.stdout) : "",
+      install: {
+        macos: "brew install jq",
+        ubuntu_debian: "sudo apt update && sudo apt install jq",
+        windows: "winget install jqlang.jq",
+        verify: "jq --version",
+      },
+      error: result.ok ? undefined : result.stderr,
+    };
+  })(),
   replay_chromium: {
     path: executable,
     exists: fs.existsSync(executable),
@@ -83,6 +97,16 @@ const context = {
     },
     upload: "Replay upload failure does not invalidate a verified local MP4; embed the MP4 and report upload failure separately.",
     avoid: "Playwright BrowserContext recordVideo, native Chromium video artifacts, or renaming WebM files to .mp4",
+  },
+  record_replay_script_guidance: {
+    use_when:
+      "Local app recording needs a repeatable full-stack run with emulators, app startup, a Replay Playwright config, upload metadata, and side-by-side MP4 proof.",
+    upload_rule:
+      "Poll replayio list --json and upload only recordings with recordingStatus == finished; never upload IDs that are still recording.",
+    jq:
+      "Use jq to filter replayio list --json by date, title, URI, recordingStatus, and uploadStatus; install jq first if missing.",
+    stitch:
+      "Use plugin root scripts/stitch-videos.js --output recordings/<room>.mp4 <left-video> <right-video> to create a verified side-by-side MP4.",
   },
   emulation_guidance: {
     recommend_when: [
