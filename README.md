@@ -9,11 +9,12 @@ npx shadcn@latest add replayio/plugins/codex
 npx shadcn@latest add replayio/plugins/codex-pro
 npx shadcn@latest add replayio/plugins/cursor
 npx shadcn@latest add replayio/plugins/claude-code
+npx shadcn@latest add replayio/plugins/claude-pro
 npx shadcn@latest add replayio/plugins/opencode
 npx shadcn@latest add replayio/plugins/obvious-ai
 ```
 
-`codex` is Replay QA for production, staging, and PR preview QA runs. `codex-pro` is the direct Replay.io dev tools bundle with Replay MCP, Replay Chromium, worker/critic proof-loop prompts, browser lifecycle screencast capture, ffmpeg-backed MP4 output, side-by-side video stitching, upload hooks, and MP4 video embedding.
+`codex` and `claude-code` are Replay QA for production, staging, and PR preview QA runs. `codex-pro` and `claude-pro` are direct Replay.io dev tools bundles with Replay MCP, Replay Chromium, worker/critic proof-loop prompts, browser lifecycle screencast capture, ffmpeg-backed MP4 output, side-by-side video stitching, upload hooks, and MP4 video embedding.
 
 Install the Codex bundles as a Codex plugin marketplace:
 
@@ -40,9 +41,10 @@ codex plugin marketplace add https://github.com/replayio/plugins \
 | --- | --- |
 | `codex` | Codex Replay QA app installed to `.codex-plugin/`, `skills/replay-qa/`, `assets/`, and packaged scripts for project setup, status, bugs, journeys, test runs, explorations, and fix verification. |
 | `codex-pro` | Codex Replay.io Pro dev tools installed to `.codex-plugin/`, `.mcp.json`, `.app.json`, `agents/openai.yaml`, `hooks.json`, `scripts/`, `skills/replayio/`, and `assets/`, with worker/critic proof-loop prompts, browser-open/browser-close lifecycle scripts, a side-by-side stitch helper, and hooks for screencast capture, ffmpeg-backed MP4 output, and Replay uploads. |
-| `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, and MCP config. |
+| `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, MCP config, and worker/critic proof-loop prompts. |
 | `claude-code` | Claude Code Replay QA plugin installed to `.claude/skills/replay-qa/`, including plugin commands and script-backed skill helpers. |
-| `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `AGENTS.md`, and `opencode.json`. |
+| `claude-pro` | Claude Code Replay.io Pro plugin installed to `.claude/skills/replayio/`, `.claude/agents/`, hooks, scripts, MCP config, commands, and Replay Pro skill guidance. |
+| `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `.opencode/agent/`, `AGENTS.md`, and `opencode.json`, including worker/critic proof-loop subagents. |
 | `obvious-ai` | Skills-only Obvious bundle installed to `.obvious/skills/replay-qa-api/SKILL.md`, including direct Replay QA API, Replay CLI token fallback, artifact, and project-reuse guidance. |
 
 The registry reads generated source files from the top-level platform directories, but each item installs into the platform-specific destination paths that plugin hosts expect.

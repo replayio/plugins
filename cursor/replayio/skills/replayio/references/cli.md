@@ -10,6 +10,17 @@ export RECORD_REPLAY_VERBOSE='1'
 
 The Replay plugin no longer expects normal browser work to go through `playwright-cli`. Use the host agent browser or browser tool directly, with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`.
 
+## Worker/Critic Prompt Templates
+
+The bundle includes reusable prompt templates for a Replay proof loop:
+
+```bash
+WORKER_PROMPT="$SKILL_DIR/subagents/replay-worker.md"
+CRITIC_PROMPT="$SKILL_DIR/subagents/replay-critic.md"
+```
+
+Use the worker prompt for the implementation role that edits code and records the final session. Use the critic prompt for the read-only role that inspects the uploaded Replay recording against the requirements and diff. The critic should use Replay MCP only; it should not run shell commands, edit files, or open a fresh browser.
+
 ## Basics
 
 The exact API is host-specific. In Browser-plugin hosts, use the selected `iab` browser:

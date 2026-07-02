@@ -218,7 +218,7 @@
       "name": "cursor",
       "type": "registry:item",
       "title": "Replay.io Cursor Plugin",
-      "description": "Cursor plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, and agent skill guidance.",
+      "description": "Cursor plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, worker/critic proof-loop prompts, and agent skill guidance.",
       "files": [
         {
           "path": "cursor/replayio/.cursor-plugin/plugin.json",
@@ -259,6 +259,16 @@
           "path": "cursor/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replayio/SKILL.md"
+        },
+        {
+          "path": "cursor/replayio/skills/replayio/subagents/replay-worker.md",
+          "type": "registry:file",
+          "target": "~/skills/replayio/subagents/replay-worker.md"
+        },
+        {
+          "path": "cursor/replayio/skills/replayio/subagents/replay-critic.md",
+          "type": "registry:file",
+          "target": "~/skills/replayio/subagents/replay-critic.md"
         },
         {
           "path": "cursor/replayio/skills/replayio/references/cli.md",
@@ -412,10 +422,124 @@
       ]
     },
     {
+      "name": "claude-pro",
+      "type": "registry:item",
+      "title": "Replay.io Pro Claude Code Plugin",
+      "description": "Claude Code Replay.io Pro bundle for Replay Chromium recordings, verified MP4 evidence, Replay MCP debugging, lifecycle hooks, and worker/critic proof-loop subagents.",
+      "docs": "After installing, start Claude Code from the project root. The Pro skill should load from `.claude/skills/replayio`, and worker/critic subagents are installed at `.claude/agents/replay-worker.md` and `.claude/agents/replay-critic.md`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replayio\n```\n\nUse `/replayio:record-replay` for direct browser evidence or `/replayio:replay-proof-loop` for the worker/critic proof loop when commands are available.",
+      "files": [
+        {
+          "path": "claude-code/replayio/.claude-plugin/plugin.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/.claude-plugin/plugin.json"
+        },
+        {
+          "path": "claude-code/replayio/.mcp.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/.mcp.json"
+        },
+        {
+          "path": "claude-code/replayio/hooks/hooks.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/hooks.json"
+        },
+        {
+          "path": "claude-code/replayio/LICENSE",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/LICENSE"
+        },
+        {
+          "path": "claude-code/replayio/assets/replayio.svg",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/assets/replayio.svg"
+        },
+        {
+          "path": "claude-code/replayio/commands/record-replay.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/commands/record-replay.md"
+        },
+        {
+          "path": "claude-code/replayio/commands/replay-proof-loop.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/commands/replay-proof-loop.md"
+        },
+        {
+          "path": "claude-code/replayio/agents/replay-worker.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/agents/replay-worker.md"
+        },
+        {
+          "path": "claude-code/replayio/agents/replay-critic.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/agents/replay-critic.md"
+        },
+        {
+          "path": "claude-code/replayio/agents/replay-worker.md",
+          "type": "registry:file",
+          "target": "~/.claude/agents/replay-worker.md"
+        },
+        {
+          "path": "claude-code/replayio/agents/replay-critic.md",
+          "type": "registry:file",
+          "target": "~/.claude/agents/replay-critic.md"
+        },
+        {
+          "path": "claude-code/replayio/scripts/browser-open.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/scripts/browser-open.js"
+        },
+        {
+          "path": "claude-code/replayio/scripts/browser-close.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/scripts/browser-close.js"
+        },
+        {
+          "path": "claude-code/replayio/scripts/stitch-videos.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/scripts/stitch-videos.js"
+        },
+        {
+          "path": "claude-code/replayio/scripts/close_browsers_and_upload.sh",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/scripts/close_browsers_and_upload.sh"
+        },
+        {
+          "path": "claude-code/replayio/scripts/replayio_browser_lifecycle_hook.sh",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/scripts/replayio_browser_lifecycle_hook.sh"
+        },
+        {
+          "path": "claude-code/replayio/skills/replayio/SKILL.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/skills/replayio/SKILL.md"
+        },
+        {
+          "path": "claude-code/replayio/skills/replayio/references/cli.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/skills/replayio/references/cli.md"
+        },
+        {
+          "path": "claude-code/replayio/skills/replayio/references/workflows.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/skills/replayio/references/workflows.md"
+        },
+        {
+          "path": "claude-code/replayio/skills/replayio/scripts/context.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/skills/replayio/scripts/context.js"
+        },
+        {
+          "path": "claude-code/replayio/skills/replayio/scripts/package.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/skills/replayio/scripts/package.json"
+        }
+      ]
+    },
+    {
       "name": "opencode",
       "type": "registry:item",
       "title": "Replay.io OpenCode Plugin",
-      "description": "OpenCode plugin bundle with Replay MCP config, Replay workflow guidance, and OpenCode hooks.",
+      "description": "OpenCode plugin bundle with Replay MCP config, Replay workflow guidance, OpenCode hooks, and worker/critic proof-loop subagents.",
       "files": [
         {
           "path": "opencode/replayio/.opencode/plugins/replayio.js",
@@ -431,6 +555,16 @@
           "path": "opencode/replayio/opencode.json",
           "type": "registry:file",
           "target": "~/opencode.json"
+        },
+        {
+          "path": "opencode/replayio/.opencode/agent/replay-worker.md",
+          "type": "registry:file",
+          "target": "~/.opencode/agent/replay-worker.md"
+        },
+        {
+          "path": "opencode/replayio/.opencode/agent/replay-critic.md",
+          "type": "registry:file",
+          "target": "~/.opencode/agent/replay-critic.md"
         }
       ]
     },

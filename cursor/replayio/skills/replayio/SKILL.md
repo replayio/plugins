@@ -25,6 +25,25 @@ export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app
 
 Recordings upload through the plugin's stop/idle hook as a safety net. If you need the Replay URL before reporting results, close the agent browser tab/session and force an upload with `replayio upload-all || replayio upload`.
 
+## Build-And-Falsify Prompt Templates
+
+This bundle includes Replay proof-loop prompt templates under `skills/replayio/subagents/`:
+
+| Prompt | Purpose |
+| --- | --- |
+| `replay-worker.md` | Implementation worker that builds, self-validates in the browser, and records the final proof session. |
+| `replay-critic.md` | Read-only adversarial critic that inspects the Replay recording against requirements and diff evidence. |
+
+Use the worker/critic loop when the user asks for Replay-backed proof, adversarial verification, "agents that prove their work", or a UI/code change whose browser behavior should be validated by runtime evidence.
+
+The worker and critic must be separate roles when the host supports subagents. The worker may edit code and record a final Replay session. The critic receives the requirements, worker claim, uploaded recording IDs/URLs, and diff as static input; it should use Replay MCP evidence only and must not edit files, run shell commands, or drive a fresh browser.
+
+Loop on the critic verdict:
+
+- `needs_revision`: send the finding back to the worker, change the implementation, record a new proof session, and re-run the critic.
+- `needs_evidence`: keep the implementation, record a better session that exercises the missing path, and re-run the critic.
+- `satisfied`: report the proof artifacts and any suite promotion recommendation.
+
 ## Direct Agent Browser First
 
 Use the host agent browser directly for live browser control and first-pass inspection. Do not reach for the Replay MCP server just to click, type, read DOM state, inspect console output, check network requests, take screenshots, read storage, or check cookies.

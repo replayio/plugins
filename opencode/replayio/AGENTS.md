@@ -11,3 +11,6 @@ Use the Replay browser workflow when a task needs a recorded browser session.
 - Use Replay analysis tools only after a recording has uploaded and direct browser output is not enough.
 - If Replay MCP renders an inspector widget, use the widget as the primary debugging view and follow its point/source/component/request actions when useful.
 - If Replay MCP authentication fails, reconnect or sign in through the agent host and retry.
+- For Replay-backed proof work, use the OpenCode subagents in `.opencode/agent/replay-worker.md` and `.opencode/agent/replay-critic.md`.
+- Keep the worker and critic separate: the worker may edit code and record the final session; the critic reviews only the uploaded Replay recording and supplied diff, and should not edit files, run shell commands, or drive a fresh browser.
+- Loop on critic verdicts: `needs_revision` means change code and record again, `needs_evidence` means re-record the missing path, and `satisfied` means the proof can be reported.

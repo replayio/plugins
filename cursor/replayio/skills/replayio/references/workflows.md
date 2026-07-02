@@ -36,3 +36,14 @@ console.log(await tab.playwright.evaluate(() => ({
 ```
 
 Use Replay analysis tools only after the recording has uploaded and direct browser output is not enough to explain the issue.
+
+## Worker/Critic Proof Loop
+
+For implementation tasks where Replay should prove the work, use the prompt templates installed under `skills/replayio/subagents/`:
+
+- `replay-worker.md`: builds or fixes the feature, self-validates with the browser, and records the final proof session under Replay Chromium.
+- `replay-critic.md`: performs read-only adversarial review of the uploaded Replay recording against the requirements and supplied diff.
+
+The critic must be a separate role from the worker whenever the host supports subagents. Give the critic only the requirements, worker claim, recording IDs/URLs, and diff. Do not give it file-write, shell, or live-browser authority. Its job is predict-then-verify runtime facts through Replay MCP, audit changed-code coverage, find mocks/fixtures that made the proof pass, and return `satisfied`, `needs_evidence`, or `needs_revision`.
+
+Treat `needs_revision` as an implementation failure and send it back to the worker. Treat `needs_evidence` as a proof-session failure and re-record the missing behavior without unnecessary code churn. Only report completion after the critic is satisfied or after clearly explaining the remaining blocker.
