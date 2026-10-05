@@ -5,6 +5,13 @@ export type BrowserCommand = {
   kind: 'open' | 'close'
   /** The session named on the command line; null when absent or a shell variable. */
   session: string | null
+  /**
+   * The directory the command ran in: playwright-cli keeps a session per
+   * directory, so the tracer must be injected from there. The base directory
+   * moved by any `cd` earlier in the command; null when a `cd` could not be
+   * followed (`~`, a variable) or no base was given.
+   */
+  cwd: string | null
 }
 
 const CLI = /(^|[\s/"'])(playwright-cli|pwcli)(\.sh)?["']?$|\$\{?PWCLI\}?["']?$|playwright_cli\.sh["']?$/i
@@ -52,19 +59,39 @@ function verb(argv: string[]): string | null {
   return null
 }
 
-export function parseBrowserCommands(command: string): BrowserCommand[] {
+/** `dir` moved by `target`, as `cd` would, without the filesystem; null when it cannot be known. */
+export function joinDir(dir: string | null, target: string): string | null {
+  if (target.includes('$') || target.includes('`') || target.startsWith('~') || target === '-') return null
+  const parts = target.startsWith('/') ? [] : (dir ?? '').split('/').filter(Boolean)
+  if (!target.startsWith('/') && dir === null) return null
+  for (const part of target.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return `/${parts.join('/')}`
+}
+
+export function parseBrowserCommands(command: string, baseCwd: string | null = null): BrowserCommand[] {
   const found: BrowserCommand[] = []
+  let cwd = baseCwd
   for (const segment of command.split(/&&|\|\||[;\n|]/)) {
     const argv = words(segment.trim())
+    // `cd dir`, possibly after VAR=value prefixes: later segments run there.
+    const cdAt = argv.findIndex(w => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w))
+    if (argv[cdAt] === 'cd') {
+      cwd = argv[cdAt + 1] === undefined ? cwd : joinDir(cwd, argv[cdAt + 1]!)
+      continue
+    }
     const at = argv.findIndex(w => CLI.test(w) || OPEN_SCRIPT.test(w) || CLOSE_SCRIPT.test(w))
     if (at < 0) continue
     const tool = argv[at] ?? ''
     const rest = argv.slice(at + 1)
-    if (OPEN_SCRIPT.test(tool)) found.push({ kind: 'open', session: sessionFlag(rest) })
-    else if (CLOSE_SCRIPT.test(tool)) found.push({ kind: 'close', session: sessionFlag(rest) })
+    if (OPEN_SCRIPT.test(tool)) found.push({ kind: 'open', session: sessionFlag(rest), cwd })
+    else if (CLOSE_SCRIPT.test(tool)) found.push({ kind: 'close', session: sessionFlag(rest), cwd })
     else {
       const v = verb(rest)
-      if (v === 'open' || v === 'close') found.push({ kind: v, session: sessionFlag(rest) })
+      if (v === 'open' || v === 'close') found.push({ kind: v, session: sessionFlag(rest), cwd })
     }
   }
   return found

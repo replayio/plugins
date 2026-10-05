@@ -849,14 +849,14 @@ const server = http.createServer(async (req, res) => {
 
     // POST /recordings { id, session, source? } -> start a recording for a session
     if (req.method === 'POST' && parts[0] === 'recordings' && parts.length === 1) {
-      const { id, session, source = 'playwright-cli' } = await readJson(req)
+      const { id, session, source = 'playwright-cli', cwd } = await readJson(req)
       if (!id || !session) return send(res, 400, { error: 'id and session required' })
       const previous = bySession.get(session)
       if (previous && previous !== id) {
         const prev = recordings.get(previous)
         if (prev) endRecording(prev)
       }
-      const rec = recordings.get(id) ?? newRecording(id, session, source)
+      const rec = recordings.get(id) ?? newRecording(id, session, source, cwd || undefined)
       rec.status = 'live'
       bySession.set(session, id)
       const injectPath = writeInjectScript(session)

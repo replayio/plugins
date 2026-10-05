@@ -66,6 +66,8 @@ const CELL_ASPECT = 2.1
 const PLAYWRIGHT_CLI = ['npx', '--yes', '--package', '@playwright/cli', 'playwright-cli']
 
 const state = {
+  /** The session's working directory: where a Bash command runs unless it `cd`s. */
+  cwd: null as string | null,
   relay: null as Relay | null,
   relayError: null as string | null,
   players: new Map<string, Player>(),
@@ -168,14 +170,16 @@ function imageSource(frame: { file: string; generation: number }) {
 }
 
 /** Injects the tracer into a session's browser and starts its live player. */
-async function attach($: EngineInterface, id: string, session: string): Promise<void> {
-  const { injectPath } = await relayJson<{ injectPath: string }>($, '/recordings', { id, session })
+async function attach($: EngineInterface, id: string, session: string, cwd: string | null): Promise<void> {
+  const { injectPath } = await relayJson<{ injectPath: string }>($, '/recordings', { id, session, cwd })
+  // playwright-cli keeps a session per directory: inject from where the browser was opened.
   const injected = await $.process.run(
     [...PLAYWRIGHT_CLI, `--session=${session}`, 'run-code', '--filename', injectPath],
-    { timeoutMs: 90_000 },
+    { timeoutMs: 90_000, ...(cwd ? { cwd } : {}) },
   )
   if (injected.exitCode !== 0 || !injected.stdout.includes('Replay live tracer attached')) {
-    throw new Error(`tracer injection failed: ${(injected.stderr || injected.stdout).slice(-300)}`)
+    await endSession($, session).catch(() => {})
+    throw new Error(`tracer injection failed${cwd ? ` in ${cwd}` : ''}: ${(injected.stderr || injected.stdout).trim().slice(-300)}`)
   }
   const player: Player = { session, startedAt: Date.now() }
   state.players.set(id, player)
@@ -259,6 +263,7 @@ export const register: Register = on => {
   registerMcpCards(on, () => (state.relay ? { base: `http://127.0.0.1:${state.relay.port}`, token: state.relay.token } : null))
 
   on('session.start', async ($, e, next) => {
+    state.cwd = e.cwd
     const started = await next(e)
     for (const key of await $.store.keys()) {
       if (!key.startsWith(STORE_PREFIX)) continue
@@ -309,7 +314,7 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const commands = parseBrowserCommands(e.command)
+    const commands = parseBrowserCommands(e.command, state.cwd)
     if (commands.length === 0 || e.run_in_background) return next(e)
     const ran = await next(e)
     if (ran.deny !== undefined || ran.isError || !state.relay) return ran
@@ -317,12 +322,14 @@ export const register: Register = on => {
     try {
       const open = commands.find(c => c.kind === 'open')
       const session = open ? (open.session ?? openedSessions(output)[0] ?? 'default') : null
-      if (session) await attach($, e.tool_use_id, session)
+      if (session) await attach($, e.tool_use_id, session, open?.cwd ?? state.cwd)
       for (const close of commands.filter(c => c.kind === 'close')) {
         for (const name of close.session ? [close.session] : closedSessions(output)) await endSession($, name)
       }
     } catch (err) {
-      $.ui.log(`replayio: live player: ${err instanceof Error ? err.message : String(err)}`)
+      const message = err instanceof Error ? err.message : String(err)
+      $.ui.log(`replayio: live player: ${message}`)
+      $.ui.toast(`Replay live player could not attach: ${message}`)
     }
     return ran
   })
