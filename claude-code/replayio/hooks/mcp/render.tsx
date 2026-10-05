@@ -235,11 +235,19 @@ export function registerMcpCards(on: On, relayAddress: RelayAddress): void {
     }
 
     const statusTone = TONES[STATUS_TONE[card.status]]
+    // The Replay mark where the terminal can draw it; a plain diamond elsewhere.
+    const logo = e.surface === 'terminal'
+      ? (() => {
+          const { Image } = $.ui.resolve(e)
+          return <Image key="logo" source={{ file: `${$.plugin.root}/assets/replay-logo.png`, format: 'png' }} columns={2} rows={1} alt="◆" />
+        })()
+      : <Text color={ACCENT} bold>◆</Text>
     return (
       <Box flexDirection="column" borderStyle="round" borderColor={card.status === 'error' ? TONES.bad : ACCENT} paddingX={1} width={width}>
         <Box flexDirection="row" justifyContent="space-between">
           <Box flexDirection="row" gap={1} flexShrink={1}>
-            <Text color={ACCENT} bold>◆ {card.title}</Text>
+            {logo}
+            <Text color={ACCENT} bold>{card.title}</Text>
             <Text dimColor wrap="truncate-end">{card.summary}</Text>
           </Box>
           <Box flexDirection="row" gap={1} flexShrink={0}>

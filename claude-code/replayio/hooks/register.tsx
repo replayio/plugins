@@ -430,7 +430,15 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         <Text dimColor wrap="truncate-end">$ {(e.props.input as { command?: string } | undefined)?.command?.split('\n')[0] ?? 'browser'}</Text>
-        <Text bold={isLive}>{headline(id, frame)}</Text>
+        <Box flexDirection="row" gap={1}>
+          {e.surface === 'terminal'
+            ? (() => {
+                const { Image } = $.ui.resolve(e)
+                return <Image key="logo" source={{ file: `${$.plugin.root}/assets/replay-logo.png`, format: 'png' }} columns={2} rows={1} alt="◆" />
+              })()
+            : null}
+          <Text bold={isLive}>{headline(id, frame)}</Text>
+        </Box>
         {picture}
         {scrubber}
         {lastError ? <Text color="red">⚠ {lastError}</Text> : null}

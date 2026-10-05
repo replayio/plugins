@@ -554,6 +554,11 @@
           "target": "~/.claude/skills/replayio/assets/replayio.svg"
         },
         {
+          "path": "claude-code/replayio/assets/replay-logo.png",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/assets/replay-logo.png"
+        },
+        {
           "path": "claude-code/replayio/commands/record-replay.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/commands/record-replay.md"

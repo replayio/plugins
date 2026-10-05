@@ -1,3 +1,5 @@
 # Laid by Claude Code when it loads the hooks module, for editors and tsc.
 .claude-plugin/types/
 live/node_modules/
+.playwright-cli/
+.replay/
