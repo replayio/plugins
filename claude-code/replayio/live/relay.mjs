@@ -19,7 +19,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 /** live/: this script, the player pages, tracer.js and vendor/. */
@@ -85,6 +85,7 @@ function loadRecording(id) {
       else if (obj.type === 'events') applyEvents(rec, obj.events, false)
       else if (obj.type === 'feed') rec.feed.push(...obj.items)
       else if (obj.type === 'end') rec.endedAt = obj.endedAt
+      else if (obj.type === 'replay') rec.replay = obj.recordings
       else if (obj.type === 'reset') rec.events = []
     } catch {}
   }
@@ -162,6 +163,85 @@ function endRecording(rec) {
   appendLine(rec, { type: 'end', endedAt: rec.endedAt })
   broadcast(rec, 'status', { status: 'ended' })
   bump(rec.id)
+  // Replay Chromium finishes writing its recording as the browser closes.
+  setTimeout(() => void linkReplay(rec).catch(err => log('replay link failed', err.message)), 3000)
+}
+
+// ------------------------------------------------------- replay recordings
+
+/** Runs the replayio CLI and resolves its stdout (stderr folded into a rejection). */
+function replayio(args, timeout = 120_000) {
+  return new Promise((resolve, reject) => {
+    execFile('replayio', args, { timeout, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) reject(new Error((stderr || stdout || err.message).replace(/\x1b\[[0-9;]*m/g, '').trim().slice(-400)))
+      else resolve(stdout)
+    })
+  })
+}
+
+const hostOf = url => { try { return new URL(url).host } catch { return null } }
+
+/**
+ * Finds the Replay Chromium recordings of a browser session: the ones that
+ * started while it ran, of a page it visited. A session that ran in another
+ * browser has none.
+ */
+async function linkReplay(rec) {
+  const out = await replayio(['list', '--json'], 30_000)
+  const list = JSON.parse(out.slice(out.indexOf('[')))
+  const hosts = new Set([rec.url, ...rec.feed.filter(f => f.kind === 'nav').map(f => f.text)].map(hostOf).filter(Boolean))
+  const from = rec.startedAt - 60_000
+  const to = (rec.endedAt ?? Date.now()) + 15_000
+  const found = list
+    .filter(r => {
+      const at = Date.parse(r.date)
+      return at >= from && at <= to && (hosts.size === 0 || hosts.has(hostOf(r.metadata?.uri)))
+    })
+    .map(r => ({
+      id: r.id,
+      uri: r.metadata?.uri ?? null,
+      date: r.date,
+      durationMs: r.duration ?? null,
+      recordingStatus: r.recordingStatus ?? null,
+      uploadStatus: r.uploadStatus ?? null,
+      url: `https://app.replay.io/recording/${r.id}`,
+    }))
+  rec.replay = found
+  appendLine(rec, { type: 'replay', recordings: found })
+  const f = frames.get(rec.id)
+  if (f) f.seq = (f.seq ?? 0) + 1
+  bump(rec.id)
+  return found
+}
+
+let login = null
+
+/** Starts `replayio login` (an interactive browser sign-in) once; it finishes on its own. */
+function startLogin() {
+  if (login && login.exitCode === null) return
+  login = spawn('replayio', ['login'], { stdio: 'ignore', detached: true })
+  login.on('error', err => log('replayio login failed', err.message))
+  login.unref()
+}
+
+/** Uploads a session's Replay recordings that are not uploaded yet. */
+async function uploadReplay(rec) {
+  const linked = rec.replay?.length ? rec.replay : await linkReplay(rec)
+  const pending = linked.filter(r => r.uploadStatus !== 'uploaded' && r.recordingStatus !== 'recording').map(r => r.id)
+  if (pending.length === 0 && linked.length === 0) throw new Error('no Replay recording was made for this session (was it Replay Chromium with RECORD_ALL_CONTENT=1?)')
+  if (pending.length) {
+    // `replayio upload` signed out starts an interactive browser sign-in and
+    // waits on it; a button press must fail fast instead.
+    const who = await replayio(['whoami'], 30_000).catch(err => err.message)
+    if (!process.env.REPLAY_API_KEY && /not authenticated|log in/i.test(who)) {
+      startLogin()
+      const err = new Error('Sign in to Replay in the browser tab that just opened, then press Upload again.')
+      err.needsLogin = true
+      throw err
+    }
+    await replayio(['upload', ...pending], 10 * 60_000)
+  }
+  return linkReplay(rec)
 }
 
 function durationOf(events) {
@@ -172,7 +252,7 @@ function describe(rec) {
   return {
     id: rec.id, session: rec.session, status: rec.status, url: rec.url,
     startedAt: rec.startedAt, endedAt: rec.endedAt, eventCount: rec.events.length,
-    durationMs: durationOf(rec.events), cwd: rec.cwd ?? null,
+    durationMs: durationOf(rec.events), cwd: rec.cwd ?? null, replay: rec.replay ?? [],
     meta: rec.meta, lastError: [...rec.feed].reverse().find(f => f.kind === 'error')?.text ?? null,
   }
 }
@@ -185,7 +265,7 @@ function listAll() {
     const loaded = recordings.get(name.slice(0, -'.ndjson'.length))
     if (loaded) { out.push(describe(loaded)); continue }
     const summary = { id: name.slice(0, -'.ndjson'.length), session: null, status: 'ended', url: null, startedAt: 0,
-      endedAt: null, eventCount: 0, durationMs: 0, cwd: null, meta: null, lastError: null }
+      endedAt: null, eventCount: 0, durationMs: 0, cwd: null, meta: null, lastError: null, replay: [] }
     let first = null
     let last = null
     for (const line of fs.readFileSync(path.join(REC_DIR, name), 'utf8').split('\n')) {
@@ -201,13 +281,14 @@ function listAll() {
           }
           summary.eventCount += obj.events.length
         } else if (obj.type === 'end') summary.endedAt = obj.endedAt
+        else if (obj.type === 'replay') summary.replay = obj.recordings
         else if (obj.type === 'feed') {
           const err = obj.items.filter(i => i.kind === 'error').pop()
           if (err) summary.lastError = err.text
         }
       } catch {}
     }
-    summary.durationMs = first !== null && last !== null ? last - first : 0
+    summary.durationMs = first !== null && last !== null ? last - first + 1 : 0
     out.push(summary)
   }
   return out.sort((a, b) => b.startedAt - a.startedAt)
@@ -283,8 +364,14 @@ function bump(id) {
 }
 
 function findChrome() {
+  // Replay Chromium first: the plugin already installs it, and with
+  // RECORD_ALL_CONTENT unset (start() clears it) it records nothing.
+  const replayChromium = process.platform === 'darwin'
+    ? path.join(os.homedir(), '.replay', 'runtimes', 'Replay-Chromium.app', 'Contents', 'MacOS', 'Chromium')
+    : path.join(os.homedir(), '.replay', 'runtimes', 'chrome-linux', 'chrome')
   const candidates = [
     process.env.REPLAY_LIVE_CHROME,
+    replayChromium,
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
     '/usr/bin/google-chrome',
@@ -323,7 +410,7 @@ class Chrome {
     if (this.ready) return this.ready
     this.ready = new Promise((resolve, reject) => {
       const bin = findChrome()
-      if (!bin) return reject(new Error('No Chrome/Chromium found for the inline player (set REPLAY_LIVE_CHROME)'))
+      if (!bin) return reject(new Error('No browser found for the inline player: install Replay Chromium (npx @replayio/replay install) or set REPLAY_LIVE_CHROME'))
       const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'replayio-live-chrome-'))
       const env = { ...process.env }
       delete env.RECORD_ALL_CONTENT
@@ -787,6 +874,10 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, startExport(rec.id, await readJson(req)))
       }
       if (req.method === 'GET' && parts[2] === 'export') return send(res, 200, exportJobs.get(rec.id) ?? null)
+
+      // GET /recordings/:id/replay -> re-match its Replay recordings; POST .../replay/upload uploads them
+      if (req.method === 'GET' && parts[2] === 'replay') return send(res, 200, await linkReplay(rec))
+      if (req.method === 'POST' && parts[2] === 'replay' && parts[3] === 'upload') return send(res, 200, await uploadReplay(rec))
     }
 
     // GET /player/:id -> the page the headless renderer (or a person) loads
@@ -815,8 +906,8 @@ const server = http.createServer(async (req, res) => {
 
     send(res, 404, { error: 'not found' })
   } catch (err) {
-    log('request failed', err.stack ?? err)
-    if (!res.headersSent) send(res, 500, { error: String(err.message ?? err) })
+    if (!err.needsLogin) log('request failed', err.stack ?? err)
+    if (!res.headersSent) send(res, err.needsLogin ? 401 : 500, { error: String(err.message ?? err), needsLogin: Boolean(err.needsLogin) })
   }
 })
 

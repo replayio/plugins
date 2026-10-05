@@ -8,8 +8,8 @@ the result row of that Bash call becomes a player in the Claude Code transcript:
 - **⤓ Save video** writes `<project>/.replay/live/<start>-<session>.mp4` and `.rrweb.json`.
   ffmpeg renders the MP4 at 15 fps, with idle gaps over 2s shortened. The JSON is a plain
   rrweb event array.
-- `/replay-live` lists recordings from every session. `/replay-live library` opens a page with
-  all of them, and `/replay-live save <session|latest>` saves one.
+- `/replayio` lists recordings from every session. `/replayio library` opens a page with
+  all of them, and `/replayio save <session|latest>` saves one.
 
 Recordings stay under `~/.claude/replayio-live/`, so players in scrollback keep working after a
 restart.
@@ -24,7 +24,7 @@ restart.
    packets to the relay through the playwright daemon, so page CSP never blocks it.
 3. `tracer.js` is [`@replayio-app-building/session-recorder`](https://www.npmjs.com/package/@replayio-app-building/session-recorder)
    (rrweb plus network, storage and websocket capture), drained every 200 ms.
-4. The relay renders `player.html` (rrweb's `Replayer`) in headless Chrome and screencasts PNG
+4. The relay renders `player.html` (rrweb's `Replayer`) in headless Replay Chromium and screencasts PNG
    frames. The hooks module draws them as an `Image` and the seek bar as a `Client`
    (`hooks/scrubber.tsx`).
 
@@ -33,8 +33,9 @@ restart.
 - A Claude Code build with function hooks, enabled with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
 - A terminal with the kitty graphics protocol (Ghostty, kitty) for the inline picture.
   Elsewhere the row shows the controls and **Open in browser**.
-- Google Chrome or Chromium for the headless renderer (`REPLAY_LIVE_CHROME` overrides it).
-- ffmpeg, for **Save video** only.
+- Replay Chromium (`npx @replayio/replay install`), which the players replay in headlessly with
+  recording turned off. `REPLAY_LIVE_CHROME` points them at another Chromium-based browser.
+- ffmpeg (`brew install ffmpeg`, `sudo apt-get install ffmpeg`), for **Save video** only.
 
 ## Rebuilding the browser assets
 

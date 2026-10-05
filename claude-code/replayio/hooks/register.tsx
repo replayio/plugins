@@ -22,6 +22,16 @@ type RecordingInfo = {
   durationMs: number
   startedAt: number
   lastError: string | null
+  /** The Replay Chromium recordings made while the session ran (none in another browser). */
+  replay: ReplayLink[]
+}
+
+type ReplayLink = {
+  id: string
+  uri: string | null
+  recordingStatus: string | null
+  uploadStatus: string | null
+  url: string
 }
 
 type ExportJob = { status: 'running' | 'done' | 'failed'; progress: number; files: string[]; error: string | null }
@@ -196,6 +206,29 @@ async function saveVideo($: EngineInterface, id: string): Promise<void> {
   }
 }
 
+async function uploadReplay($: EngineInterface, id: string): Promise<void> {
+  $.ui.toast('Uploading the Replay recording…')
+  try {
+    const links = await relayJson<ReplayLink[]>($, `/recordings/${encodeURIComponent(id)}/replay/upload`, {})
+    const done = links.filter(l => l.uploadStatus === 'uploaded')
+    $.ui.toast(done.length ? `Uploaded: ${done.map(l => l.url).join('  ')}` : 'Nothing was uploaded.')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    // Signed out, the relay opened Replay's browser sign-in: say what to do next.
+    $.ui.toast(/^Sign in/.test(message) ? message : `Upload failed: ${message}`)
+  }
+}
+
+/** Puts a prompt in the composer that hands the recording to Replay MCP. */
+async function debugWithClaude($: EngineInterface, links: ReplayLink[], rec: RecordingInfo | null | undefined): Promise<void> {
+  const ids = links.map(l => `${l.id} (${l.url})`).join(', ')
+  const page = rec?.url ? ` of ${rec.url}` : ''
+  const error = rec?.lastError ? ` The page reported: "${rec.lastError}".` : ''
+  await $.prompt.fill({
+    text: `Use the Replay MCP tools to debug the Replay recording ${ids} of the browser session${page}.${error} Start with RecordingOverview, then find the root cause.`,
+  })
+}
+
 function openUrl($: EngineInterface, url: string): void {
   void $.process.run(['open', url]).catch(() => $.ui.toast(url))
 }
@@ -236,14 +269,14 @@ export const register: Register = on => {
       $.ui.log(`replayio: live relay did not start: ${state.relayError}`)
     }
     await $.command.register({
-      name: 'replay-live',
+      name: 'replayio',
       description: 'Replay recordings: list them, open the library, or save one as video',
       argumentHint: '[library | save <session>]',
     })
     return started
   })
 
-  on('command.run', { command: 'replay-live' }, async ($, e) => {
+  on('command.run', { command: 'replayio' }, async ($, e) => {
     if (!state.relay) return { text: `The Replay live relay is not running${state.relayError ? `: ${state.relayError}` : ''}.` }
     const [verb, arg] = e.args.trim().split(/\s+/)
     if (verb === 'library') {
@@ -261,7 +294,7 @@ export const register: Register = on => {
     const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.round(ms / 1000) % 60).padStart(2, '0')}`
     const lines = recordings.slice(0, 20).map(r =>
       `- ${r.status === 'live' ? '◉ live' : '■'} ${new Date(r.startedAt).toLocaleString()} \`${r.session}\` ${clock(r.durationMs)} ${r.url ?? ''} — [play](${viewerUrl(r.id)})`)
-    return { text: `Replay recordings (newest first; all of them in the library: /replay-live library):\n${lines.join('\n')}` }
+    return { text: `Replay recordings (newest first; all of them in the library: /replayio library):\n${lines.join('\n')}` }
   })
 
   on('ui.message', async ($, e, next) => {
@@ -362,6 +395,25 @@ export const register: Register = on => {
             <Button key="open" label="Open in browser" onPress={() => openUrl($, viewerUrl(id))} />
           </Box>
         ) : null}
+        {(() => {
+          const rec = frame?.recording
+          if (!state.relay || !rec || rec.status === 'live') return null
+          const links = rec.replay ?? []
+          if (links.length === 0) return <Text dimColor>No Replay recording linked (the browser was not Replay Chromium recording).</Text>
+          const isUploaded = links.every(l => l.uploadStatus === 'uploaded')
+          return (
+            <Box flexDirection="row" gap={1}>
+              <Text>
+                Replay recording {links.map(l => l.id.slice(0, 8)).join(', ')}
+                <Text dimColor> · {isUploaded ? 'uploaded' : links.some(l => l.recordingStatus === 'recording') ? 'still recording' : 'not uploaded'}</Text>
+              </Text>
+              {isUploaded
+                ? <Button key="replay-open" label="Open in Replay" onPress={() => openUrl($, links[0]?.url ?? '')} />
+                : <Button key="replay-upload" label="⇪ Upload" onPress={() => uploadReplay($, id)} />}
+              <Button key="replay-debug" variant="primary" label="Debug with Claude" onPress={() => debugWithClaude($, links, rec)} />
+            </Box>
+          )
+        })()}
         {saved ? <Text dimColor={frame?.export?.status !== 'failed'} color={frame?.export?.status === 'failed' ? 'red' : undefined}>{saved}</Text> : null}
       </Box>
     )
