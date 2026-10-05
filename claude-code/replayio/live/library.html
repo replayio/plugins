@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Replay recordings</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #101014; color: #d8d8de; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: #8a8a96; }
+  .wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #23232b; vertical-align: middle; }
+  th { color: #8a8a96; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  td.url { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9a9aa6; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .live { color: #F02D5E; font-weight: 600; }
+  a, button { color: #ddd; background: #2a2a33; border: 0; border-radius: 4px; padding: 5px 10px; cursor: pointer;
+    font: inherit; font-size: 13px; text-decoration: none; display: inline-block; }
+  a.play { background: #F02D5E; color: #fff; }
+  a:hover, button:hover { filter: brightness(1.2); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .status { font-size: 12px; color: #8a8a96; }
+  .err { color: #ff8a9a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Replay recordings</h1>
+  <p class="sub">Every browser session Claude opened, saved under <code id="dir"></code>.</p>
+  <div class="wrap"><table>
+    <thead><tr><th>When</th><th>Session</th><th>Page</th><th>Length</th><th>Events</th><th></th></tr></thead>
+    <tbody id="rows"><tr><td colspan="6">Loading…</td></tr></tbody>
+  </table></div>
+</main>
+<script>
+(async () => {
+  const token = new URLSearchParams(location.search).get('token')
+  const q = `token=${encodeURIComponent(token)}`
+  const clock = ms => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  const list = await (await fetch(`/recordings?all=1&${q}`)).json()
+  const rows = document.getElementById('rows')
+  if (!list.length) { rows.innerHTML = '<tr><td colspan="6">No recordings yet.</td></tr>'; return }
+  rows.innerHTML = list.map(r => {
+    const id = encodeURIComponent(r.id)
+    return `<tr>
+      <td>${r.startedAt ? new Date(r.startedAt).toLocaleString() : ''}</td>
+      <td>${esc(r.session)} ${r.status === 'live' ? '<span class="live">● live</span>' : ''}</td>
+      <td class="url" title="${esc(r.url)}">${esc(r.url)}</td>
+      <td class="num">${clock(r.durationMs)}</td>
+      <td class="num">${r.eventCount.toLocaleString()}</td>
+      <td><div class="actions">
+        <a class="play" href="/player/${id}?mode=auto&chrome=1&${q}">▶ Play</a>
+        <a href="/recordings/${id}/rrweb.json?${q}">rrweb.json</a>
+        <button data-export="${id}">Save MP4</button>
+      </div><div class="status" id="s-${esc(r.id)}"></div></td>
+    </tr>`
+  }).join('')
+  for (const button of document.querySelectorAll('[data-export]')) {
+    button.onclick = async () => {
+      const id = button.dataset.export
+      const status = document.getElementById(`s-${decodeURIComponent(id)}`)
+      button.disabled = true
+      await fetch(`/recordings/${id}/export?${q}`, { method: 'POST', body: '{}' })
+      const poll = async () => {
+        const job = await (await fetch(`/recordings/${id}/export?${q}`)).json()
+        if (!job) return
+        if (job.status === 'running') { status.textContent = `Rendering… ${Math.round(job.progress * 100)}%`; return setTimeout(poll, 700) }
+        button.disabled = false
+        status.className = job.status === 'failed' ? 'status err' : 'status'
+        status.textContent = job.status === 'failed' ? job.error : `Saved ${job.files.join(', ')}`
+      }
+      poll()
+    }
+  }
+})()
+</script>
+</body>
+</html>
