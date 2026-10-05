@@ -1,6 +1,7 @@
 # Inline Replay players
 
-When Claude opens a browser with `playwright-cli` (raw, `$PWCLI`, or `scripts/browser-open.js`),
+When Claude opens a browser with `playwright-cli` (raw, `npx @playwright/cli`, `$PWCLI`, a shell wrapper around it, or
+`scripts/browser-open.js`) or `agent-browser`,
 the result row of that Bash call becomes a player in the Claude Code transcript:
 
 - **Live** while the browser runs.

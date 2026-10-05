@@ -1,7 +1,7 @@
 /* @jsx h */
 import type { EngineInterface, Register } from 'claude-code'
 
-import { closedSessions, openedSessions, parseBrowserCommands } from './detect.ts'
+import { closedSessions, endCwd, openedSessions, parseBrowserCommands, withOutput, type BrowserCommand } from './detect.ts'
 import { registerMcpCards } from './mcp/render.tsx'
 
 // Inline Replay players: when Claude opens a Replay / playwright-cli browser
@@ -68,6 +68,8 @@ const PLAYWRIGHT_CLI = ['npx', '--yes', '--package', '@playwright/cli', 'playwri
 const state = {
   /** The session's working directory: where a Bash command runs unless it `cd`s. */
   cwd: null as string | null,
+  /** Browser session name -> the recording following it, until it closes. */
+  live: new Map<string, string>(),
   relay: null as Relay | null,
   relayError: null as string | null,
   players: new Map<string, Player>(),
@@ -169,20 +171,35 @@ function imageSource(frame: { file: string; generation: number }) {
   return { file: frame.file, format: 'png' as const, generation: frame.generation }
 }
 
+/** The CDP endpoint of an agent-browser session, which the relay joins to inject the tracer itself. */
+async function agentBrowserCdp($: EngineInterface, session: string): Promise<string> {
+  const res = await $.process.run(['agent-browser', '--session', session, 'get', 'cdp-url'], { timeoutMs: 30_000 })
+  const url = res.stdout.split('\n').map(line => line.trim()).find(line => /^wss?:\/\//.test(line))
+  if (res.exitCode !== 0 || !url) throw new Error(`agent-browser has no browser for session ${session}: ${(res.stderr || res.stdout).trim().slice(-200)}`)
+  return url
+}
+
 /** Injects the tracer into a session's browser and starts its live player. */
-async function attach($: EngineInterface, id: string, session: string, cwd: string | null): Promise<void> {
-  const { injectPath } = await relayJson<{ injectPath: string }>($, '/recordings', { id, session, cwd })
-  // playwright-cli keeps a session per directory: inject from where the browser was opened.
-  const injected = await $.process.run(
-    [...PLAYWRIGHT_CLI, `--session=${session}`, 'run-code', '--filename', injectPath],
-    { timeoutMs: 90_000, ...(cwd ? { cwd } : {}) },
-  )
-  if (injected.exitCode !== 0 || !injected.stdout.includes('Replay live tracer attached')) {
-    await endSession($, session).catch(() => {})
-    throw new Error(`tracer injection failed${cwd ? ` in ${cwd}` : ''}: ${(injected.stderr || injected.stdout).trim().slice(-300)}`)
+async function attach($: EngineInterface, id: string, command: BrowserCommand, session: string): Promise<void> {
+  const cwd = command.cwd
+  if (command.tool === 'agent-browser') {
+    const cdp = await agentBrowserCdp($, session)
+    await relayJson($, '/recordings', { id, session, source: 'agent-browser', cwd, cdp })
+  } else {
+    const { injectPath } = await relayJson<{ injectPath: string }>($, '/recordings', { id, session, cwd })
+    // playwright-cli keeps a session per directory: inject from where the browser was opened.
+    const injected = await $.process.run(
+      [...PLAYWRIGHT_CLI, `--session=${session}`, 'run-code', '--filename', injectPath],
+      { timeoutMs: 90_000, ...(cwd ? { cwd } : {}) },
+    )
+    if (injected.exitCode !== 0 || !injected.stdout.includes('Replay live tracer attached')) {
+      await endSession($, session).catch(() => {})
+      throw new Error(`tracer injection failed${cwd ? ` in ${cwd}` : ''}: ${(injected.stderr || injected.stdout).trim().slice(-300)}`)
+    }
   }
   const player: Player = { session, startedAt: Date.now() }
   state.players.set(id, player)
+  state.live.set(session, id)
   await $.store.set(`${STORE_PREFIX}${id}`, player)
   await relayJson($, `/recordings/${encodeURIComponent(id)}/player`, { mode: 'live' })
   $.ui.status(`◉ Replay live: ${session}`)
@@ -190,6 +207,7 @@ async function attach($: EngineInterface, id: string, session: string, cwd: stri
 }
 
 async function endSession($: EngineInterface, session: string): Promise<void> {
+  state.live.delete(session)
   await relayJson($, `/sessions/${encodeURIComponent(session)}/end`, {})
   $.ui.status(undefined)
 }
@@ -314,17 +332,27 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const commands = parseBrowserCommands(e.command, state.cwd)
-    if (commands.length === 0 || e.run_in_background) return next(e)
+    if (e.run_in_background) return next(e)
+    const parsed = parseBrowserCommands(e.command, state.cwd)
     const ran = await next(e)
     if (ran.deny !== undefined || ran.isError || !state.relay) return ran
+    // The text of a command can hide the CLI (a wrapper function, a variable): its output cannot.
     const output = ran.text ?? ''
+    const commands = withOutput(parsed, output, endCwd(e.command, state.cwd))
     try {
-      const open = commands.find(c => c.kind === 'open')
-      const session = open ? (open.session ?? openedSessions(output)[0] ?? 'default') : null
-      if (session) await attach($, e.tool_use_id, session, open?.cwd ?? state.cwd)
-      for (const close of commands.filter(c => c.kind === 'close')) {
-        for (const name of close.session ? [close.session] : closedSessions(output)) await endSession($, name)
+      for (const [i, command] of commands.entries()) {
+        const name = command.session
+          ?? (command.kind === 'open' ? openedSessions(output)[0] : closedSessions(output)[0])
+          ?? 'default'
+        if (command.kind === 'close') {
+          for (const session of command.all ? [...state.live.keys()] : [name]) await endSession($, session)
+          continue
+        }
+        // Opened and closed within this one call: nothing left to watch.
+        if (commands.slice(i + 1).some(c => c.kind === 'close' && (c.all || (c.session ?? 'default') === name))) continue
+        // agent-browser `open` on a live session only navigates it.
+        if (command.tool === 'agent-browser' && state.live.has(name)) continue
+        await attach($, e.tool_use_id, command, name)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -334,7 +362,22 @@ export const register: Register = on => {
     return ran
   })
 
-  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+  // The engine folds runs of shell commands into one "Ran N shell commands" line, and an
+  // unfolded group draws each call as a ToolUse row with its output inline, so the player
+  // is drawn on the call's own row, and any group that holds a player is unfolded.
+  on('ui.render', { component: 'ToolGroup' }, ($, e, next) =>
+    !e.props.isExpanded && e.props.calls.some(c => c.tool_use_id && state.players.has(c.tool_use_id))
+      ? next({ ...e, props: { ...e.props, isExpanded: true } })
+      : next(e))
+
+  // A standalone call's result block would repeat the player.
+  on('ui.render', { component: 'ToolResult' }, ($, e, next) => {
+    if (!state.players.has(e.requestId) || e.props.isErrored) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box />
+  })
+
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     const id = e.requestId
     const player = state.players.get(id)
     if (!player || e.props.isErrored) return next(e)
@@ -386,6 +429,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
+        <Text dimColor wrap="truncate-end">$ {(e.props.input as { command?: string } | undefined)?.command?.split('\n')[0] ?? 'browser'}</Text>
         <Text bold={isLive}>{headline(id, frame)}</Text>
         {picture}
         {scrubber}

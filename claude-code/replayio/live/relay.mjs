@@ -161,6 +161,7 @@ function endRecording(rec) {
   rec.status = 'ended'
   rec.endedAt = Date.now()
   if (bySession.get(rec.session) === rec.id) bySession.delete(rec.session)
+  detachCdp(rec.session)
   appendLine(rec, { type: 'end', endedAt: rec.endedAt })
   broadcast(rec, 'status', { status: 'ended' })
   bump(rec.id)
@@ -485,6 +486,60 @@ class Chrome {
 }
 
 const chrome = new Chrome()
+
+// ------------------------------------------------------- browsers we did not launch
+
+/** session -> the relay's own CDP connection to a browser someone else (agent-browser) started. */
+const attachments = new Map()
+
+function detachCdp(session) {
+  const held = attachments.get(session)
+  if (!held) return
+  attachments.delete(session)
+  try { held.ws?.close() } catch {}
+}
+
+/**
+ * Injects the tracer into every page of a running browser over its own CDP
+ * connection (`wsUrl`, the browser endpoint): a binding for the packets, the
+ * tracer as a new-document script for later navigations and tabs, and the
+ * tracer evaluated in what is already loaded. CSP cannot block any of it.
+ */
+async function attachCdp(session, wsUrl) {
+  detachCdp(session)
+  const cdp = new Chrome()
+  await cdp.connect(wsUrl)
+  attachments.set(session, cdp)
+  cdp.ws.addEventListener('close', () => { if (attachments.get(session) === cdp) attachments.delete(session) })
+  const source = tracerSource()
+  const known = new Set()
+  let pages = 0
+  const attachPage = async info => {
+    if (known.has(info.targetId) || info.type !== 'page' || /^(devtools|chrome-extension):/.test(info.url ?? '')) return
+    known.add(info.targetId)
+    const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: info.targetId, flatten: true })
+    const page = ++pages
+    cdp.handlers.set(sessionId, (method, params) => {
+      if (method !== 'Runtime.bindingCalled' || params.name !== '__replayClaudeEmit') return
+      try { ingest(session, page, null, JSON.parse(params.payload)) } catch {}
+    })
+    await cdp.send('Runtime.enable', {}, sessionId)
+    await cdp.send('Runtime.addBinding', { name: '__replayClaudeEmit' }, sessionId)
+    await cdp.send('Page.enable', {}, sessionId)
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source }, sessionId)
+    await cdp.send('Runtime.evaluate', { expression: source }, sessionId).catch(() => {})
+  }
+  // Browser-level events carry no sessionId; Chrome's handler map keys them under undefined.
+  cdp.handlers.set(undefined, (method, params) => {
+    if (method === 'Target.targetCreated') attachPage(params.targetInfo).catch(err => log('cdp attach failed', err.message))
+    else if (method === 'Target.targetDestroyed') known.delete(params.targetId)
+  })
+  // Reports every existing target as created, then each new one.
+  await cdp.send('Target.setDiscoverTargets', { discover: true })
+  // Wait for the first page to be attached, so the caller knows injection happened.
+  for (let i = 0; i < 50 && pages === 0; i++) await new Promise(r => setTimeout(r, 100))
+  if (pages === 0) throw new Error('no page to attach to in that browser')
+}
 /** recording id -> { targetId, sessionId, mode, touched, ... } */
 const players = new Map()
 const MAX_PLAYERS = 4
@@ -849,7 +904,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /recordings { id, session, source? } -> start a recording for a session
     if (req.method === 'POST' && parts[0] === 'recordings' && parts.length === 1) {
-      const { id, session, source = 'playwright-cli', cwd } = await readJson(req)
+      const { id, session, source = 'playwright-cli', cwd, cdp } = await readJson(req)
       if (!id || !session) return send(res, 400, { error: 'id and session required' })
       const previous = bySession.get(session)
       if (previous && previous !== id) {
@@ -859,7 +914,16 @@ const server = http.createServer(async (req, res) => {
       const rec = recordings.get(id) ?? newRecording(id, session, source, cwd || undefined)
       rec.status = 'live'
       bySession.set(session, id)
-      const injectPath = writeInjectScript(session)
+      // `cdp`: a browser the relay joins itself (agent-browser) instead of one playwright-cli injects.
+      if (cdp) {
+        try {
+          await attachCdp(session, cdp)
+        } catch (err) {
+          endRecording(rec)
+          return send(res, 502, { error: `could not attach to the browser: ${err.message}` })
+        }
+      }
+      const injectPath = cdp ? null : writeInjectScript(session)
       return send(res, 200, { recording: describe(rec), injectPath, viewerUrl: viewerUrl(id) })
     }
 
