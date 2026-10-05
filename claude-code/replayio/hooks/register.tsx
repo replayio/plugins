@@ -2,6 +2,7 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import { closedSessions, openedSessions, parseBrowserCommands } from './detect.ts'
+import { registerMcpCards } from './mcp/render.tsx'
 
 // Inline Replay players: when Claude opens a Replay / playwright-cli browser
 // from Bash, the relay injects Replay's tracer into the page, records the rrweb
@@ -254,6 +255,9 @@ function exportLine(job: ExportJob | null | undefined): string | null {
 }
 
 export const register: Register = on => {
+  // Replay MCP tool results drawn as cards (hooks/mcp); screenshots go through the relay.
+  registerMcpCards(on, () => (state.relay ? { base: `http://127.0.0.1:${state.relay.port}`, token: state.relay.token } : null))
+
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     for (const key of await $.store.keys()) {

@@ -459,6 +459,41 @@
           "target": "~/.claude/skills/replayio/hooks/scrubber.tsx"
         },
         {
+          "path": "claude-code/replayio/hooks/mcp/card.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/card.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/cards.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/cards.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/render.tsx",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/render.tsx"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/index.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/index.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/overview.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/overview.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/code.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/code.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/react.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/react.ts"
+        },
+        {
           "path": "claude-code/replayio/tsconfig.json",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/tsconfig.json"

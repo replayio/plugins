@@ -28,13 +28,14 @@ const DATA_DIR = process.env.REPLAY_LIVE_DIR || path.join(os.homedir(), '.claude
 const REC_DIR = path.join(DATA_DIR, 'recordings')
 const FRAME_DIR = path.join(DATA_DIR, 'frames')
 const INJECT_DIR = path.join(DATA_DIR, 'inject')
+const IMAGE_DIR = path.join(DATA_DIR, 'images')
 const TOKEN = process.env.REPLAY_LIVE_TOKEN || crypto.randomUUID()
 const PLAYER_W = 1280
 const PLAYER_H = 800
 const MAX_FPS = 12
 const LONG_POLL_MS = 20_000
 
-for (const dir of [REC_DIR, FRAME_DIR, INJECT_DIR]) fs.mkdirSync(dir, { recursive: true })
+for (const dir of [REC_DIR, FRAME_DIR, INJECT_DIR, IMAGE_DIR]) fs.mkdirSync(dir, { recursive: true })
 
 const log = (...args) => process.stderr.write(`[replayio-live relay] ${args.join(' ')}\n`)
 const safeId = id => String(id).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
@@ -771,6 +772,54 @@ async function exportMp4(rec, file, onProgress) {
   }
 }
 
+// ------------------------------------------------------------------- images
+
+const converting = new Map()
+
+/**
+ * A local PNG of a remote image, for the terminal's Image (which draws PNG
+ * files): a PNG is saved as is, anything else is drawn in the renderer and
+ * screenshotted. Cached by URL.
+ */
+function imageAsPng(url) {
+  const file = path.join(IMAGE_DIR, `${crypto.createHash('sha1').update(url).digest('hex')}.png`)
+  if (fs.existsSync(file)) return Promise.resolve(file)
+  if (converting.has(url)) return converting.get(url)
+  const job = (async () => {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`image fetch ${res.status}`)
+    const bytes = Buffer.from(await res.arrayBuffer())
+    const type = res.headers.get('content-type') ?? 'image/jpeg'
+    if (type.includes('png')) {
+      fs.writeFileSync(file, bytes)
+      return file
+    }
+    const html = `<html><body style="margin:0;background:#000"><img id=i src="data:${type};base64,${bytes.toString('base64')}"></body></html>`
+    const target = await openTarget(`data:text/html;base64,${Buffer.from(html).toString('base64')}`, 1280, 800, () => {})
+    try {
+      let size = null
+      for (let i = 0; i < 50 && !size; i++) {
+        size = await evaluate(target.sessionId, 'document.getElementById("i") && document.getElementById("i").complete && document.getElementById("i").naturalWidth ? [document.getElementById("i").naturalWidth, document.getElementById("i").naturalHeight] : null').catch(() => null)
+        if (!size) await new Promise(r => setTimeout(r, 100))
+      }
+      if (!size) throw new Error('image did not load')
+      const scale = Math.min(1, 1600 / size[0])
+      const width = Math.round(size[0] * scale)
+      const height = Math.round(size[1] * scale)
+      await chrome.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, target.sessionId)
+      await evaluate(target.sessionId, `(document.getElementById("i").style.width = "${width}px", true)`)
+      const { data } = await chrome.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height, scale: 1 } }, target.sessionId)
+      fs.writeFileSync(file, Buffer.from(data, 'base64'))
+      return file
+    } finally {
+      await closeTarget(target)
+    }
+  })()
+  converting.set(url, job)
+  job.finally(() => converting.delete(url)).catch(() => {})
+  return job
+}
+
 // --------------------------------------------------------------------- http
 
 function send(res, status, body, type = 'application/json') {
@@ -888,6 +937,19 @@ const server = http.createServer(async (req, res) => {
     // GET /library -> every saved recording
     if (req.method === 'GET' && parts[0] === 'library') {
       return send(res, 200, fs.readFileSync(path.join(HERE, 'library.html'), 'utf8'), 'text/html; charset=utf-8')
+    }
+
+    // GET /image?url=... -> { file, width, height }: a local PNG of a remote image (Replay screenshots)
+    if (req.method === 'GET' && parts[0] === 'image') {
+      const remote = url.searchParams.get('url') ?? ''
+      if (!/^https:\/\/[a-z0-9.-]*replay\.io\//.test(remote)) return send(res, 400, { error: 'only replay.io images' })
+      const file = await imageAsPng(remote)
+      // A PNG's IHDR holds its size at bytes 16-23.
+      const head = Buffer.alloc(24)
+      const fd = fs.openSync(file, 'r')
+      fs.readSync(fd, head, 0, 24, 0)
+      fs.closeSync(fd)
+      return send(res, 200, { file, width: head.readUInt32BE(16), height: head.readUInt32BE(20) })
     }
 
     // GET /frames?version=N -> long-poll for frame changes
