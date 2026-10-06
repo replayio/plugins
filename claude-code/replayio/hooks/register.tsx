@@ -442,6 +442,9 @@ export const register: Register = on => {
         {picture}
         {scrubber}
         {lastError ? <Text color="red">⚠ {lastError}</Text> : null}
+        {frame?.recording?.status === 'ended' && frame.recording.eventCount === 0
+          ? <Text color="yellow" wrap="wrap">No events were recorded: the page may not have loaded in this browser, or it blocked the tracer{lastError ? ` (${lastError})` : ''}. Open the page over http://localhost or a real URL and try again.</Text>
+          : null}
         {state.relay ? (
           <Box flexDirection="row" gap={1}>
             {isLive

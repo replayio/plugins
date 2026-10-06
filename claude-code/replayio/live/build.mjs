@@ -20,9 +20,48 @@ import { startSession } from "@replayio-app-building/session-recorder";
   if (typeof emit !== "function") return;
   window.__replayClaudeTracer = true;
 
+  // The recorder assumes a secure context with real storage. A file:// page or a plain-http
+  // LAN address has neither crypto.randomUUID nor usable localStorage, and without these
+  // it throws while starting and records nothing.
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID !== "function") {
+    Object.defineProperty(crypto, "randomUUID", {
+      configurable: true,
+      writable: true,
+      value: () => {
+        const b = crypto.getRandomValues(new Uint8Array(16));
+        b[6] = (b[6] & 15) | 64;
+        b[8] = (b[8] & 63) | 128;
+        const h = Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+        return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+      },
+    });
+  }
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try {
+      void window[name].length;
+    } catch {
+      const data = new Map();
+      const memory = {
+        get length() { return data.size; },
+        key: i => [...data.keys()][i] ?? null,
+        getItem: k => (data.has(String(k)) ? data.get(String(k)) : null),
+        setItem: (k, v) => { data.set(String(k), String(v)); },
+        removeItem: k => { data.delete(String(k)); },
+        clear: () => data.clear(),
+      };
+      Object.defineProperty(window, name, { configurable: true, get: () => memory });
+    }
+  }
+
   // Installs the capture proxies (fetch, WebSocket, storage) and rrweb, which
   // waits for DOMContentLoaded itself, so this runs at document start.
-  const session = startSession();
+  let session;
+  try {
+    session = startSession();
+  } catch (err) {
+    emit(JSON.stringify([{ kind: "detectedError", time: new Date().toISOString(), detectedError: { message: "Replay live tracer failed to start: " + String(err && err.message || err) } }]));
+    return;
+  }
 
   const flush = () => {
     const packets = session.getSessionData();
