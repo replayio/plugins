@@ -23,8 +23,8 @@ Available scripts:
 
 | Script | Purpose |
 | --- | --- |
-| `browser-open.js` | Open a URL with Replay recording flags enabled and start WebM capture for a final MP4 artifact. |
-| `browser-close.js` | Stop capture, close the browser, transcode WebM to MP4 with ffmpeg, verify the MP4, and upload pending Replay recordings. |
+| `browser-open.js` | Open a URL with Replay recording flags enabled. With `--output <file>.mp4`, also start WebM capture for an MP4. |
+| `browser-close.js` | Close the browser, transcode any capture to a verified MP4 with ffmpeg, and upload pending Replay recordings. |
 | `stitch-videos.js` | Stitch exactly two browser videos into one verified side-by-side MP4. |
 | `replayio_browser_lifecycle_hook.sh` | Claude Code post-tool hook that starts capture after raw `playwright-cli open` and cleans up after raw close commands. |
 | `close_browsers_and_upload.sh` | Claude Code stop hook that closes lingering sessions and uploads pending Replay recordings. |
@@ -59,9 +59,19 @@ Loop on the critic verdict:
 
 The recording is the unit of evidence. Screenshots, DOM snapshots, local MP4s, and passing self-checks are supporting context; the critic should treat the uploaded Replay timeline as the source of truth for runtime state, network requests, source execution, exceptions, and mock-data audit.
 
+## Signing In To Replay
+
+Uploads need a signed-in `replayio` CLI. Signed out, the hooks and `browser-close.js` leave recordings local and say so, rather than block on a sign-in. When that happens, or `replayio whoami` reports `not authenticated`:
+
+1. Start the interactive sign-in in the background: run `replayio login` with `run_in_background` (it opens a browser tab).
+2. Stop. End your turn and ask the user to tell you once they have signed in. Do not poll, retry uploads, or continue with work that needs the upload.
+3. When the user confirms, check `replayio whoami`, then upload with `replayio upload <ids>` (see `references/cli.md`).
+
 ## MP4 Video Contract
 
-When the task needs shareable browser video, open and close the browser through the lifecycle scripts. Use an absolute `.mp4` path when you need a predictable artifact location:
+Only make a video when the user asks for one. Without `--output`, `browser-open.js` and the hooks record the Replay recording only; the inline live player shows the run either way.
+
+When the user asks for shareable browser video, open and close the browser through the lifecycle scripts. Use an absolute `.mp4` path when you need a predictable artifact location:
 
 ```bash
 VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
