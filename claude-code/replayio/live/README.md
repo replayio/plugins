@@ -12,7 +12,7 @@ the result row of that Bash call becomes a player in the Claude Code transcript:
 - `/replayio` lists recordings from every session. `/replayio library` opens a page with
   all of them, and `/replayio save <session|latest>` saves one.
 
-Recordings stay under `~/.claude/replayio-live/`, so players in scrollback keep working after a
+Recordings stay under `~/.claude/replayio/`, so players in scrollback keep working after a
 restart.
 
 ## How it works

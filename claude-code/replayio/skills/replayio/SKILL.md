@@ -1,5 +1,5 @@
 ---
-name: "replayio"
+name: "replayio-pro"
 description: "Use when you need Replay.io Pro in Claude Code: record or inspect a Replay browser run, capture verified MP4 evidence, test a local app with Replay Chromium, or use Replay MCP for deeper debugging."
 allowed-tools: Bash(node *), Bash(npx *), Bash(replayio *), Bash(ffmpeg *), Bash(file *), Bash(test *), Bash(command *)
 ---
