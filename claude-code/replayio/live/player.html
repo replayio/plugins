@@ -220,7 +220,9 @@
       if (from + i < applied) return
       if (!started) {
         if (ev.type !== 4) return
-        const r = new rrweb.Replayer([], { ...config, liveMode: true })
+        // This rrweb defaults to a virtual DOM that only flushes on playback: events added in one go
+        // (history on a late join) would sit unapplied, so the live Replayer applies them directly.
+        const r = new rrweb.Replayer([], { ...config, liveMode: true, useVirtualDom: false })
         mount(r)
         // Catch up on history at once, then follow new events ~300ms behind.
         r.startLive(Math.max(ev.timestamp, catchUpTo) - 300)
