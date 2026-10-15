@@ -1,7 +1,7 @@
 {
   "name": "replay-qa",
-  "version": "0.2.0",
-  "description": "Use Replay QA from Claude Code with script-backed skills and slash commands.",
+  "version": "0.3.0",
+  "description": "Use Replay QA from Claude Code with script-backed skills and slash commands, and watch explorations and journey runs stream live: inline rrweb players in the conversation and a canvas of every journey.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -12,6 +12,9 @@
   "keywords": [
     "replay",
     "replay-qa",
-    "qa"
+    "qa",
+    "live-preview",
+    "rrweb",
+    "canvas"
   ]
 }
