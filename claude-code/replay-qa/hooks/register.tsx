@@ -84,6 +84,8 @@ const LAST_PROJECT_KEY = 'qa-last-project'
 const MAX_CELLS = 255
 // A terminal cell is about twice as tall as it is wide.
 const CELL_ASPECT = 2.1
+/** Rows of the canvas picture one wheel tick pans. */
+const SCROLL_PAN_ROWS = 2
 const OVERVIEW_MS = 4_000
 const PENDING_MS = 1_500
 /** A re-test the backend was asked to start is awaited this long. */
@@ -655,15 +657,17 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The wheel over the canvas picture zooms around the pointer; elsewhere the pane scrolls as usual.
+  // Two-finger scroll (the wheel) over the canvas picture pans it up and down, as in Figma; elsewhere
+  // the pane scrolls as usual. Zoom is the footer's buttons, the keys and double-click: a ui.scroll
+  // carries no modifier key (no ⌘-scroll) and no horizontal movement.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const picture = state.canvasPicture
     const p = e.pointer
     if (!picture || !p || e.origin.kind !== 'person') return next(e)
     const row = p.row - picture.top
     if (row < 0 || row >= picture.rows || p.column < 0 || p.column >= picture.columns) return next(e)
-    moveCamera($, { op: 'zoom', factor: Math.pow(1.15, -Math.max(-6, Math.min(6, e.by))), x: (p.column + 0.5) / picture.columns, y: (row + 0.5) / picture.rows })
-    return { deny: 'the canvas zoomed instead' }
+    moveCamera($, { op: 'pan', dx: 0, dy: (-Math.max(-12, Math.min(12, e.by)) * SCROLL_PAN_ROWS) / picture.rows })
+    return { deny: 'the canvas panned instead' }
   })
 
   // The result of a Replay QA script run from Bash.
@@ -875,7 +879,7 @@ export const register: Register = on => {
           <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
           {overview?.error && frame && frame.generation > 0
             ? <Text color="red" wrap="truncate-end">⚠ {overview.error}</Text>
-            : <Text dimColor wrap="truncate-end">scroll to zoom · drag to pan · double-click a tile · click the minimap to jump</Text>}
+            : <Text dimColor wrap="truncate-end">scroll or drag to pan · double-click a tile · click the minimap to jump</Text>}
         </Box>
       </Box>
     )
