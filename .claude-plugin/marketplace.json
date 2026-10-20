@@ -9,6 +9,14 @@
   },
   "plugins": [
     {
+      "name": "replay-qa",
+      "source": "./claude-code/replay-qa",
+      "description": "Run Replay QA against production, staging, and PR preview URLs with script-backed skills and slash commands.",
+      "version": "0.2.0",
+      "category": "development",
+      "homepage": "https://replay.io"
+    },
+    {
       "name": "replayio",
       "source": "./claude-code/replayio",
       "description": "Record agent browser runs in Replay Chromium, watch and scrub them inline in the conversation, upload recordings, and debug them with Replay MCP.",

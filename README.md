@@ -35,6 +35,14 @@ codex plugin marketplace add https://github.com/replayio/plugins \
   --sparse codex/replayio
 ```
 
+Install the Claude Code plugins from the Claude Code plugin marketplace:
+
+```bash
+claude plugin marketplace add replayio/plugins
+claude plugin install replay-qa@replayio
+claude plugin install replayio@replayio
+```
+
 ## Registry Items
 
 | Item | Installs |
