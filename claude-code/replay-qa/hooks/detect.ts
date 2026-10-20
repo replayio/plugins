@@ -27,6 +27,8 @@ export type QaCommand = {
   bugStatus?: string
   /** The backend will start a test run of its own because of this command (a bug marked fixed, a missing bug reported). */
   startsRun: boolean
+  /** The QA server the script talks to when it is not the default: REPLAY_QA_API_BASE or REPLAY_QA_URL set on the command. */
+  server?: string
 }
 
 /** Shell words of one simple command, quotes removed (no expansion). */
@@ -101,7 +103,8 @@ function fromArgs(script: QaScript, args: string[], env: Record<string, string>)
     (script === 'mark-bug' && bugStatus === 'fixed')
     || (script === 'rerun-journeys' && Boolean(bugId))
     || script === 'report-missing-bug'
-  return { script, ...(projectId ? { projectId } : {}), ...(bugId ? { bugId } : {}), ...(bugStatus ? { bugStatus } : {}), startsRun }
+  const server = env.REPLAY_QA_API_BASE || env.REPLAY_QA_URL
+  return { script, ...(projectId ? { projectId } : {}), ...(bugId ? { bugId } : {}), ...(bugStatus ? { bugStatus } : {}), startsRun, ...(server ? { server } : {}) }
 }
 
 // ------------------------------------------------------------------- output
@@ -118,6 +121,8 @@ export type QaOutput = {
   journeyId?: string
   /** Every exploration id mentioned anywhere, for callers that want to match one. */
   seenExplorationIds: string[]
+  /** The QA server named by a reverse-proxy runbook's `replayqa proxy … --qa-url <url>`. */
+  qaUrl?: string
 }
 
 /** JSON values in a text: the whole text if it is JSON, else each `{`/`[` line start that parses. */
@@ -204,6 +209,8 @@ export function parseQaOutput(text: string): QaOutput {
   if (anyProject) out.projectId = anyProject
   for (const m of text.matchAll(/\bexpl-[A-Za-z0-9_-]+/g)) add(out.seenExplorationIds, m[0])
   for (const m of text.matchAll(/\brun-[A-Za-z0-9_-]+/g)) if (out.runIds.length < 20) add(out.runIds, m[0])
+  const qaUrl = /--qa-url(?:=|\s+)["']?(https?:\/\/[^\s"'\\]+)/.exec(text)?.[1]
+  if (qaUrl) out.qaUrl = qaUrl
   return out
 }
 

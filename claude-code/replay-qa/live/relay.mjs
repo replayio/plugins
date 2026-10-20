@@ -18,10 +18,10 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { AuthError, NotFoundError, RecordingStream } from './qa-stream.mjs'
+import { AuthError, NotFoundError, RecordingStream, apiBaseOf, tunnelServers } from './qa-stream.mjs'
 
 /** live/: this script, the pages and vendor/. */
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -29,7 +29,7 @@ const DATA_DIR = process.env.REPLAY_QA_LIVE_DIR || path.join(os.homedir(), '.cla
 const REC_DIR = path.join(DATA_DIR, 'recordings')
 const FRAME_DIR = path.join(DATA_DIR, 'frames')
 const TOKEN = process.env.REPLAY_QA_LIVE_TOKEN || crypto.randomUUID()
-const API_BASE = (process.env.REPLAY_QA_API_BASE || 'https://qa.replay.io/api/v1').replace(/\/+$/, '')
+const SERVERS_FILE = path.join(DATA_DIR, 'servers.json')
 const PLAYER_W = 1280
 const PLAYER_H = 800
 const CANVAS_W = 1600
@@ -51,6 +51,47 @@ const safeId = id => String(id).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 // ------------------------------------------------------------------- QA API
+
+const DEFAULT_API_BASE = apiBaseOf(process.env.REPLAY_QA_API_BASE) ?? apiBaseOf(process.env.REPLAY_QA_URL) ?? 'https://qa.replay.io/api/v1'
+
+/**
+ * project id -> the QA server it lives on, when it is not the default one (a PR preview, staging).
+ * Told by the hooks module (what a script ran against, a pasted URL) and kept across restarts.
+ * @type {Map<string, string>}
+ */
+const projectServers = new Map(Object.entries((() => {
+  try { return JSON.parse(fs.readFileSync(SERVERS_FILE, 'utf8')) } catch { return {} }
+})()).filter(([, base]) => apiBaseOf(base)))
+
+function setProjectServer(projectId, value) {
+  const base = apiBaseOf(value)
+  if (!base || projectServers.get(projectId) === base) return false
+  projectServers.set(projectId, base)
+  fs.writeFile(SERVERS_FILE, JSON.stringify(Object.fromEntries(projectServers), null, 2), err => err && log('servers write failed', err.message))
+  return true
+}
+
+/**
+ * The QA servers of running tunnels: `replayqa proxy|run --project <id> --qa-url <url>`, the command
+ * a QA server's reverse-proxy runbook gives with its own URL. Read from `ps` at most every few seconds.
+ */
+let tunnels = { at: 0, map: new Map(), pending: null }
+function runningTunnels() {
+  if (Date.now() - tunnels.at < 5_000) return Promise.resolve(tunnels.map)
+  tunnels.pending ??= new Promise(resolve => {
+    execFile('ps', ['-axww', '-o', 'command='], { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      tunnels = { at: Date.now(), map: err ? tunnels.map : tunnelServers(String(stdout)), pending: null }
+      resolve(tunnels.map)
+    })
+  })
+  return tunnels.pending
+}
+
+/** Where a project's API lives: the server it was named with, else its running tunnel's, else the default. */
+async function apiBaseFor(projectId) {
+  if (!projectId) return DEFAULT_API_BASE
+  return projectServers.get(projectId) ?? (await runningTunnels()).get(projectId) ?? DEFAULT_API_BASE
+}
 
 function authToken() {
   const env = process.env.REPLAY_QA_API_KEY || process.env.REPLAY_API_KEY || process.env.REPLAY_ACCESS_TOKEN
@@ -82,9 +123,11 @@ function release() {
 
 /** GET/POST against the QA API: `{ status, data }`; the token is read each time so a refresh is picked up. */
 async function request(apiPath, { method = 'GET', body } = {}) {
+  const projectId = /^\/projects\/([^/?]+)/.exec(apiPath)?.[1]
+  const apiBase = await apiBaseFor(projectId && decodeURIComponent(projectId))
   await slot()
   try {
-    const res = await fetch(`${API_BASE}${apiPath}`, {
+    const res = await fetch(`${apiBase}${apiPath}`, {
       method,
       headers: { authorization: `Bearer ${authToken()}`, 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -412,10 +455,11 @@ async function refreshProject(projectId, { maxAge = 0 } = {}) {
       ])
       for (const r of [project, journeys, runs]) {
         if (r.status === 401 || r.status === 403) throw new AuthError(`Replay QA answered ${r.status}: run \`replayio login\``)
-        if (r.status === 404) throw new NotFoundError(`No Replay QA project ${projectId}`)
+        if (r.status === 404) throw new NotFoundError(`No Replay QA project ${projectId} on ${new URL(await apiBaseFor(projectId)).host}: for a PR preview or staging, open the canvas with its dashboard URL`)
         if (r.status !== 200) throw new Error(`Replay QA answered ${r.status} for project ${projectId}`)
       }
       const p = project.data
+      state.server = await apiBaseFor(projectId)
       state.project = { id: p.id, name: p.name, target_url: p.target_url, status: p.status }
       state.journeys = itemsOf(journeys.data)
       state.runs = itemsOf(runs.data)
@@ -525,7 +569,7 @@ function overview(projectId) {
     })
   }
   return {
-    project: state.project, error: state.error, updatedAt: state.updatedAt, following: followed.has(projectId),
+    project: state.project, server: state.server && state.server !== DEFAULT_API_BASE ? state.server : null, error: state.error, updatedAt: state.updatedAt, following: followed.has(projectId),
     counts: {
       live: tiles.filter(t => t.isLive).length,
       journeys: state.journeys.length,
@@ -823,12 +867,14 @@ const server = http.createServer(async (req, res) => {
     const token = url.searchParams.get('token') ?? req.headers['x-replay-qa-live-token']
     if (token !== TOKEN) return send(res, 403, { error: 'bad token' })
 
-    if (req.method === 'GET' && parts[0] === 'health') return send(res, 200, { ok: true, followed: [...followed], recordings: recordings.size, apiBase: API_BASE })
+    if (req.method === 'GET' && parts[0] === 'health') return send(res, 200, { ok: true, followed: [...followed], recordings: recordings.size, apiBase: DEFAULT_API_BASE })
 
-    // POST /qa/follow { projectId, on } -> turn running work of a project into recordings as it starts
+    // POST /qa/follow { projectId, on, server? } -> turn running work of a project into recordings as it starts;
+    // `server` (an API base, a QA URL or a dashboard URL) says which QA server the project is on
     if (req.method === 'POST' && parts[0] === 'qa' && parts[1] === 'follow') {
-      const { projectId, on = true } = await readJson(req)
+      const { projectId, on = true, server } = await readJson(req)
       if (!projectId) return send(res, 400, { error: 'projectId required' })
+      if (server && setProjectServer(projectId, server)) projects.delete(projectId)
       if (on) { followed.add(projectId); await refreshProject(projectId) } else followed.delete(projectId)
       return send(res, 200, overview(projectId) ?? { project: null })
     }
