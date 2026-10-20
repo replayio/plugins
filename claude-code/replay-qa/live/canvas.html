@@ -20,7 +20,10 @@
   .zoom { display: flex; align-items: center; gap: 2px; }
   .zoom button { min-width: 30px; }
   #zoomPct { min-width: 58px; font-variant-numeric: tabular-nums; }
-  #hint { position: absolute; left: 12px; bottom: 10px; color: #5f5f6b; font-size: 12px; pointer-events: none; user-select: none; }
+  #hint { position: absolute; left: 12px; bottom: 10px; color: #5f5f6b; font-size: 12px; pointer-events: none; user-select: none;
+    max-width: calc(100% - 260px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #minimap { position: absolute; right: 12px; bottom: 12px; border: 1px solid #34343f; border-radius: 6px;
+    background: rgba(16,16,20,.88); cursor: pointer; touch-action: none; }
   /* In the terminal the picture is the canvas alone: the pane draws the project header and the hint. */
   body.embed header#head, body.embed #hint { display: none; }
   body.embed { font-size: 17px; }
@@ -88,6 +91,7 @@
 </header>
 <div id="error"></div>
 <div id="viewport"><div id="world"><main id="grid"><div class="empty" id="placeholder">Loading project…</div></main></div>
+  <canvas id="minimap" aria-label="Minimap: click or drag to move the view"></canvas>
   <div id="hint">Pinch or ⌘/Ctrl-scroll to zoom · scroll or drag to pan · double-click a tile to focus it</div></div>
 <script>
 (() => {
@@ -225,6 +229,7 @@
     }
     applyFilter()
     layout()
+    drawMinimap()
   }
 
   function applyFilter() {
@@ -366,6 +371,56 @@
     viewport.style.backgroundSize = `${24 * cam.k}px ${24 * cam.k}px`
     viewport.style.backgroundPosition = `${cam.x}px ${cam.y}px`
     $('zoomPct').textContent = `${Math.round(cam.k * 100)}%`
+    drawMinimap()
+  }
+
+  // ------------------------------------------------------------ minimap
+  // Every tile in its status colour and the part of the canvas in view, in the bottom-right corner.
+  const minimap = $('minimap')
+  const MINI_COLORS = { live: '#F02D5E', passed: '#2f7d4f', bugs: '#b8892a', failed: '#a8444a', infra: '#a8444a', 'never-run': '#2c2c35' }
+  /** Where the minimap sits in the viewport, in px, as last drawn. */
+  let mini = null
+  function drawMinimap() {
+    const vw = viewport.clientWidth
+    const vh = viewport.clientHeight
+    const ww = grid.offsetWidth
+    const wh = grid.offsetHeight
+    if (!vw || !vh || !ww || !wh) return
+    let w = Math.min(embed ? 300 : 220, vw * 0.22)
+    let h = (w * wh) / ww
+    if (h > vh * 0.3) { h = vh * 0.3; w = (h * ww) / wh }
+    const s = w / ww
+    const dpr = window.devicePixelRatio || 1
+    minimap.style.width = `${w}px`
+    minimap.style.height = `${h}px`
+    if (minimap.width !== Math.round(w * dpr) || minimap.height !== Math.round(h * dpr)) {
+      minimap.width = Math.round(w * dpr)
+      minimap.height = Math.round(h * dpr)
+    }
+    const ctx = minimap.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, w, h)
+    for (const [, view] of views) {
+      if (view.el.classList.contains('hidden')) continue
+      ctx.fillStyle = view.tile.isLive ? MINI_COLORS.live : MINI_COLORS[view.tile.status] ?? '#3a3a44'
+      ctx.fillRect(view.el.offsetLeft * s, view.el.offsetTop * s, Math.max(1, view.el.offsetWidth * s - 1), Math.max(1, view.el.offsetHeight * s - 1))
+    }
+    // The view, clipped to the map.
+    const x = Math.max(0, (-cam.x / cam.k) * s)
+    const y = Math.max(0, (-cam.y / cam.k) * s)
+    const r = Math.min(w, ((vw - cam.x) / cam.k) * s)
+    const b = Math.min(h, ((vh - cam.y) / cam.k) * s)
+    ctx.strokeStyle = '#f1f1f4'
+    ctx.lineWidth = 1.5
+    if (r > x && b > y) ctx.strokeRect(x + 0.75, y + 0.75, Math.max(0, r - x - 1.5), Math.max(0, b - y - 1.5))
+    mini = { x: vw - 12 - w, y: vh - 12 - h, w, h }
+  }
+  /** Centre the view on the point at (u, v) of the minimap, fractions of its width and height. */
+  function centerOnMinimap(u, v) {
+    autoFit = false
+    cam.x = viewport.clientWidth / 2 - Math.max(0, Math.min(1, u)) * grid.offsetWidth * cam.k
+    cam.y = viewport.clientHeight / 2 - Math.max(0, Math.min(1, v)) * grid.offsetHeight * cam.k
+    apply()
   }
   /** Zoom by `factor`, keeping the viewport point (px, py) still. */
   function zoomAt(factor, px, py, glide = false) {
@@ -398,24 +453,32 @@
     return view?.tile.title ?? null
   }
 
-  new ResizeObserver(() => { if (autoFit) fitAll() }).observe(grid)
-  new ResizeObserver(() => { if (autoFit) fitAll() }).observe(viewport)
+  new ResizeObserver(() => { if (autoFit) fitAll(); else drawMinimap() }).observe(grid)
+  new ResizeObserver(() => { if (autoFit) fitAll(); else drawMinimap() }).observe(viewport)
 
   // The terminal's camera (the relay evaluates these in the screencast): points and distances are
   // fractions of the viewport, so the caller needs no pixels.
+  // Each answers the camera's state: the zoom, and where the minimap sits (fractions of the viewport).
+  const camState = (extra = {}) => {
+    const vw = viewport.clientWidth || 1
+    const vh = viewport.clientHeight || 1
+    return { k: cam.k, minimap: mini && { x: mini.x / vw, y: mini.y / vh, w: mini.w / vw, h: mini.h / vh }, ...extra }
+  }
   window.__canvas = {
-    zoom(factor, fx = 0.5, fy = 0.5) { moved(); zoomAt(factor, fx * viewport.clientWidth, fy * viewport.clientHeight); return cam.k },
-    pan(dx, dy) { moved(); cam.x += dx * viewport.clientWidth; cam.y += dy * viewport.clientHeight; apply(); return cam.k },
+    state: () => camState(),
+    zoom(factor, fx = 0.5, fy = 0.5) { moved(); zoomAt(factor, fx * viewport.clientWidth, fy * viewport.clientHeight); return camState() },
+    pan(dx, dy) { moved(); cam.x += dx * viewport.clientWidth; cam.y += dy * viewport.clientHeight; apply(); return camState() },
     focus(fx, fy) {
       const r = viewport.getBoundingClientRect()
       const el = document.elementFromPoint(r.left + fx * r.width, r.top + fy * r.height)?.closest('.tile')
-      if (el) return focusTile(el)
+      if (el) return camState({ title: focusTile(el) })
       autoFit = true
       fitAll(true)
-      return null
+      return camState()
     },
-    fit() { autoFit = true; fitAll(true); return cam.k },
-    actual() { moved(); zoomAt(1 / cam.k, ...center(), true); return cam.k },
+    minimap(u, v) { centerOnMinimap(u, v); return camState() },
+    fit() { autoFit = true; fitAll(true); return camState() },
+    actual() { moved(); zoomAt(1 / cam.k, ...center(), true); return camState() },
   }
 
   if (!embed) {
@@ -458,6 +521,24 @@
       const [a, b] = [...pointers.values()]
       return { mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2, d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1 }
     }
+    // Click or drag on the minimap to move the view there.
+    let miniPointer = null
+    const onMinimap = e => {
+      const r = minimap.getBoundingClientRect()
+      centerOnMinimap((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height)
+    }
+    minimap.addEventListener('pointerdown', e => {
+      e.stopPropagation()
+      miniPointer = e.pointerId
+      minimap.setPointerCapture(e.pointerId)
+      onMinimap(e)
+    })
+    minimap.addEventListener('pointermove', e => { if (e.pointerId === miniPointer) onMinimap(e) })
+    const miniLift = e => { if (e.pointerId === miniPointer) miniPointer = null }
+    minimap.addEventListener('pointerup', miniLift)
+    minimap.addEventListener('pointercancel', miniLift)
+    minimap.addEventListener('dblclick', e => e.stopPropagation())
+
     viewport.addEventListener('pointerdown', e => {
       if (e.button > 1 || e.target.closest('button, a')) return
       viewport.setPointerCapture(e.pointerId)

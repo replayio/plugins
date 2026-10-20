@@ -122,6 +122,8 @@ const state = {
   canvasAsked: null as { width: number; height: number } | null,
   /** The drag being applied to the canvas camera: its id and how far it has moved it so far. */
   cameraDrag: null as { id: number; dx: number; dy: number } | null,
+  /** The canvas camera as its last move left it: the zoom, and where the minimap sits (fractions of the picture). */
+  camera: null as CameraState | null,
   /** Camera moves go to the relay one after another, in order. */
   cameraQueue: Promise.resolve() as Promise<unknown>,
   statusLine: undefined as string | undefined,
@@ -397,6 +399,7 @@ async function hideCanvas($: EngineInterface): Promise<void> {
   state.canvasProjectId = null
   state.canvasPicture = null
   state.canvasAsked = null
+  state.camera = null
   if (projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false }).catch(() => {})
 }
 
@@ -404,15 +407,30 @@ type CameraMove =
   | { op: 'zoom'; factor: number; x?: number; y?: number }
   | { op: 'pan'; dx: number; dy: number }
   | { op: 'focus'; x: number; y: number }
+  | { op: 'minimap'; x: number; y: number }
   | { op: 'fit' }
   | { op: 'actual' }
+  | { op: 'state' }
 
-/** Moves the canvas screencast's camera; points and distances are fractions of the picture. */
+type Rect = { x: number; y: number; w: number; h: number }
+type CameraState = { k: number; minimap: Rect | null }
+
+/**
+ * Moves the canvas screencast's camera (points and distances are fractions of the picture), and keeps
+ * what it answers: the zoom the footer shows and the minimap the camera layer lets the pointer jump on.
+ */
 function moveCamera($: EngineInterface, move: CameraMove): void {
   const projectId = state.canvasProjectId
   if (!projectId) return
   state.cameraQueue = state.cameraQueue
-    .then(() => relayJson($, `/canvas/${encodeURIComponent(projectId)}/camera`, move))
+    .then(async () => {
+      const { result } = await relayJson<{ result: CameraState | null }>($, `/canvas/${encodeURIComponent(projectId)}/camera`, move)
+      if (!result || typeof result.k !== 'number' || state.canvasProjectId !== projectId) return
+      const before = state.camera
+      state.camera = { k: result.k, minimap: result.minimap ?? null }
+      const pct = (c: CameraState | null) => (c ? Math.round(c.k * 100) : null)
+      if (pct(before) !== pct(state.camera) || JSON.stringify(before?.minimap) !== JSON.stringify(state.camera.minimap)) $.ui.invalidate('ui.render')
+    })
     .catch(err => $.ui.log(`replay-qa: canvas camera: ${message(err)}`))
 }
 
@@ -424,6 +442,7 @@ function sizeCanvas($: EngineInterface, projectId: string, columns: number, rows
   if (asked && Math.abs(asked.height - height) / asked.height < 0.04) return
   state.canvasAsked = { width, height }
   void relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width, height })
+    .then(() => moveCamera($, { op: 'state' }))
     .catch(err => $.ui.log(`replay-qa: canvas resize: ${message(err)}`))
 }
 
@@ -513,6 +532,8 @@ async function watchOverviews($: EngineInterface): Promise<void> {
     await settlePending($)
     updateStatusLine($)
     if (changed && state.canvasProjectId) $.ui.invalidate('ui.render')
+    // The canvas fits itself as tiles come and go: keep the zoom and the minimap the pane shows in step.
+    if (state.canvasProjectId) moveCamera($, { op: 'state' })
     await $.clock.sleep(state.pending.length ? PENDING_MS : OVERVIEW_MS)
   }
 }
@@ -622,6 +643,8 @@ export const register: Register = on => {
       if (dx !== prev.dx || dy !== prev.dy) moveCamera($, { op: 'pan', dx: dx - prev.dx, dy: dy - prev.dy })
     } else if (data.type === 'focus') {
       moveCamera($, { op: 'focus', x: fraction(data.x) ?? 0.5, y: fraction(data.y) ?? 0.5 })
+    } else if (data.type === 'minimap') {
+      moveCamera($, { op: 'minimap', x: fraction(data.x) ?? 0.5, y: fraction(data.y) ?? 0.5 })
     } else if (data.type === 'zoom') {
       moveCamera($, { op: 'zoom', factor: fraction(data.factor, 0.5, 2) ?? 1 })
     } else if (data.type === 'pan') {
@@ -833,7 +856,7 @@ export const register: Register = on => {
               <Box key="stage" width={columns} height={rows}>
                 <Image key={CANVAS_KEY} source={imageSource(frame)} columns={columns} rows={rows} alt={`Replay QA canvas for ${name}`} />
                 <Box position="absolute" top={0} left={0} width={columns} height={rows}>
-                  <Client key="camera" module="./camera.tsx" width={columns} height={rows} />
+                  <Client key="camera" module="./camera.tsx" width={columns} height={rows} props={{ minimap: state.camera?.minimap ?? null }} />
                 </Box>
               </Box>
             )
@@ -844,11 +867,15 @@ export const register: Register = on => {
         {header}
         {picture}
         <Box flexDirection="row" gap={1} height={1} overflow="hidden">
+          <Button key="zoomOut" label="−" onPress={() => moveCamera($, { op: 'zoom', factor: 0.8 })} />
+          <Button key="zoomPct" label={state.camera ? `${Math.round(state.camera.k * 100)}%` : '100%'} onPress={() => moveCamera($, { op: 'actual' })} />
+          <Button key="zoomIn" label="+" onPress={() => moveCamera($, { op: 'zoom', factor: 1.25 })} />
+          <Button key="fit" label="Fit" onPress={() => moveCamera($, { op: 'fit' })} />
           <Button key="open" label="Open in browser" onPress={() => openUrl($, canvasPage(projectId))} />
           <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
           {overview?.error && frame && frame.generation > 0
             ? <Text color="red" wrap="truncate-end">⚠ {overview.error}</Text>
-            : <Text dimColor wrap="truncate-end">scroll to zoom · drag to pan · double-click a tile · click, then + − 0 1 ←↑→↓</Text>}
+            : <Text dimColor wrap="truncate-end">scroll to zoom · drag to pan · double-click a tile · click the minimap to jump</Text>}
         </Box>
       </Box>
     )
