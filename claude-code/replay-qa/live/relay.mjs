@@ -961,19 +961,21 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, framesSnapshot().frames[id] ?? null)
     }
 
-    // POST /canvas/:project/camera { op: zoom|pan|focus|minimap|fit|actual|state, factor?, x?, y?, dx?, dy? } -> move
-    // the screencast canvas's camera; points and distances are fractions of the picture (of the minimap for
-    // `minimap`). Answers { result: { k, minimap } }: the zoom, and where the minimap sits in the picture.
+    // POST /canvas/:project/camera { op: zoom|pan|focus|minimap|gesture|fit|actual|state, factor?, x?, y?, dx?, dy?,
+    // id?, sx?, sy?, done? } -> move the screencast canvas's camera; points and distances are fractions of the picture
+    // (of the minimap for `minimap`). A `gesture` is a pointer drag as it stands, which scrubs a tile's timeline,
+    // presses its buttons or pans. Answers { result: { k, minimap } }: the zoom, and where the minimap sits.
     if (req.method === 'POST' && parts[0] === 'canvas' && parts[1] && parts[2] === 'camera') {
       const player = players.get(canvasViewId(parts[1]))
       if (!player?.sessionId) return send(res, 409, { error: 'the canvas is not on screen' })
-      const { op, factor, x, y, dx, dy } = await readJson(req)
+      const { op, factor, x, y, dx, dy, id: gestureId, sx, sy, done } = await readJson(req)
       const n = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback)
       const args = {
         zoom: [n(factor, 0.1, 10, 1), n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
         pan: [n(dx, -10, 10, 0), n(dy, -10, 10, 0)],
         focus: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
         minimap: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
+        gesture: [Math.trunc(n(gestureId, 0, 1e9, 0)), n(sx, -2, 3, 0.5), n(sy, -2, 3, 0.5), n(x, -2, 3, 0.5), n(y, -2, 3, 0.5), done === true],
         state: [],
         fit: [],
         actual: [],

@@ -122,8 +122,6 @@ const state = {
   /** Where the canvas picture sits in the pane body, for the wheel; the screencast size last asked for. */
   canvasPicture: null as { top: number; columns: number; rows: number } | null,
   canvasAsked: null as { width: number; height: number } | null,
-  /** The drag being applied to the canvas camera: its id and how far it has moved it so far. */
-  cameraDrag: null as { id: number; dx: number; dy: number } | null,
   /** The canvas camera as its last move left it: the zoom, and where the minimap sits (fractions of the picture). */
   camera: null as CameraState | null,
   /** Camera moves go to the relay one after another, in order. */
@@ -410,6 +408,7 @@ type CameraMove =
   | { op: 'pan'; dx: number; dy: number }
   | { op: 'focus'; x: number; y: number }
   | { op: 'minimap'; x: number; y: number }
+  | { op: 'gesture'; id: number; sx: number; sy: number; x: number; y: number; done: boolean }
   | { op: 'fit' }
   | { op: 'actual' }
   | { op: 'state' }
@@ -637,12 +636,10 @@ export const register: Register = on => {
     }
     if (module !== 'camera.tsx' || e.requestId !== PANE) return next(e)
     const data = (e.data ?? {}) as Record<string, unknown>
-    if (data.type === 'drag' && typeof data.id === 'number') {
-      const dx = fraction(data.dx, -4, 4) ?? 0
-      const dy = fraction(data.dy, -4, 4) ?? 0
-      const prev = state.cameraDrag?.id === data.id ? state.cameraDrag : { id: data.id, dx: 0, dy: 0 }
-      state.cameraDrag = { id: data.id, dx, dy }
-      if (dx !== prev.dx || dy !== prev.dy) moveCamera($, { op: 'pan', dx: dx - prev.dx, dy: dy - prev.dy })
+    if (data.type === 'gesture' && typeof data.id === 'number') {
+      // A press or drag as it stands; the page decides from where it began whether it scrubs, presses or pans.
+      const at = (v: unknown) => fraction(v, -2, 3) ?? 0.5
+      moveCamera($, { op: 'gesture', id: data.id, sx: at(data.sx), sy: at(data.sy), x: at(data.x), y: at(data.y), done: data.done === true })
     } else if (data.type === 'focus') {
       moveCamera($, { op: 'focus', x: fraction(data.x) ?? 0.5, y: fraction(data.y) ?? 0.5 })
     } else if (data.type === 'minimap') {
@@ -879,7 +876,7 @@ export const register: Register = on => {
           <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
           {overview?.error && frame && frame.generation > 0
             ? <Text color="red" wrap="truncate-end">⚠ {overview.error}</Text>
-            : <Text dimColor wrap="truncate-end">scroll or drag to pan · double-click a tile · click the minimap to jump</Text>}
+            : <Text dimColor wrap="truncate-end">scroll or drag to pan · drag a tile's timeline to scrub · double-click a tile · click the minimap to jump</Text>}
         </Box>
       </Box>
     )

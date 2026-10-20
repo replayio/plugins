@@ -2,9 +2,10 @@
 import type { ClientKeyEvent, ClientPointerEvent, ClientSurface } from 'claude-code'
 
 // Laid over the canvas picture in the pane, it turns the pointer and keys into camera moves for
-// the hooks module, which hands them to the relay's screencast: drag to pan, double-click a tile
-// to focus it (the background to fit), press or drag on the minimap to move the view there, and
-// once clicked + − 0 1 and the arrows. The wheel pans through the pane's ui.scroll instead, as a
+// the hooks module, which hands them to the relay's screencast: a press or drag is a gesture the
+// page decides from where it began (a tile's timeline scrubs, its ▶ and Live buttons press, anywhere
+// else pans), double-click a tile to focus it (the background to fit), press or drag on the minimap
+// to move the view there, and once clicked + − 0 1 and the arrows. The wheel pans through the pane's ui.scroll instead, as a
 // Client gets no wheel.
 //
 // Points and distances are posted as fractions of the picture, so nothing here knows pixels.
@@ -15,8 +16,8 @@ export type CameraProps = {
 }
 
 /**
- * A drag posts its total from where it began: a post replaced within a frame loses nothing. One
- * that began on the minimap moves the view to the point under the pointer instead.
+ * A gesture posts all of itself each time (where it began, where it is, whether it ended): a post
+ * replaced within a frame loses nothing. One that began on the minimap moves the view instead.
  */
 type Drag = { id: number; x: number; y: number; moved: boolean; onMinimap: boolean }
 type Local = { drag: Drag | null; lastClick: { at: number; x: number; y: number } | null; drags: number }
@@ -44,6 +45,8 @@ export default function Camera(raw: unknown, surface: ClientSurface) {
     const v = (p.y / rows() - m.y) / m.h
     return u >= 0 && u <= 1 && v >= 0 && v <= 1 ? { x: u, y: v } : null
   }
+  const gesture = (drag: Drag, p: { x: number; y: number }, done: boolean) =>
+    surface.post({ type: 'gesture', id: drag.id, sx: drag.x / columns(), sy: drag.y / rows(), x: p.x / columns(), y: p.y / rows(), done })
   const jump = (p: { x: number; y: number }) => {
     const m = props.minimap
     if (!m) return
@@ -59,21 +62,21 @@ export default function Camera(raw: unknown, surface: ClientSurface) {
       if (mini) {
         l.lastClick = null
         jump(p)
+      } else {
+        gesture(l.drag, p, false)
       }
     } else if (e.type === 'move' && l.drag?.onMinimap && e.button) {
       jump(p)
     } else if (e.type === 'up' && l.drag?.onMinimap) {
       l.drag = null
     } else if (e.type === 'move' && l.drag && e.button) {
-      const dx = p.x - l.drag.x
-      const dy = p.y - l.drag.y
-      if (Math.abs(dx) + Math.abs(dy) >= 0.5) l.drag.moved = true
-      if (l.drag.moved) surface.post({ type: 'drag', id: l.drag.id, dx: dx / columns(), dy: dy / rows() })
+      if (Math.abs(p.x - l.drag.x) + Math.abs(p.y - l.drag.y) >= 0.5) l.drag.moved = true
+      if (l.drag.moved) gesture(l.drag, p, false)
     } else if (e.type === 'up' && l.drag) {
       const drag = l.drag
       l.drag = null
       if (drag.moved) {
-        surface.post({ type: 'drag', id: drag.id, dx: (p.x - drag.x) / columns(), dy: (p.y - drag.y) / rows() })
+        gesture(drag, p, true)
         return
       }
       const now = Date.now()
@@ -83,6 +86,7 @@ export default function Camera(raw: unknown, surface: ClientSurface) {
         surface.post({ type: 'focus', x: p.x / columns(), y: p.y / rows() })
       } else {
         l.lastClick = { at: now, x: p.x, y: p.y }
+        gesture(drag, p, true)
       }
     }
   })

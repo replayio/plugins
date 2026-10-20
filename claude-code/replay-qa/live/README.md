@@ -13,7 +13,11 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
   up and down (Claude Code passes a pane no ⌘-scroll, sideways scroll or pinch), drag to pan, double-click a tile to focus (and load) it, use the footer's
   `−` `100%` `+` `Fit` buttons, or once clicked `+` `-` `0` `1` and the arrows. Both views have a
   minimap in the corner (tiles in their status colours, the view outlined): press or drag on it to
-  move the view there. `hooks/camera.tsx` turns those into the relay's `/canvas/:project/camera`
+  move the view there.
+  Every loaded tile has playback controls: ▶/❚❚, a timeline to press or drag (the tile shows that
+  moment, and the screencast with it), the time, and **● Live** to follow a running recording again.
+  In the terminal a press or drag is sent whole to the page (`gesture`), which decides from where it
+  began whether it scrubs, presses a button or pans. `hooks/camera.tsx` turns those into the relay's `/canvas/:project/camera`
   moves, which it runs in the screencast page.
 
 ## How it works
