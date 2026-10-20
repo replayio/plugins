@@ -71,6 +71,11 @@
   body.embed .poster .bugtitle, body.embed .poster .why, body.embed .poster .msg { font-size: 14px; }
   body.embed .poster button { display: none; }
   @keyframes pulse { 50% { opacity: .35; } }
+  /* A finished run's last frame, drawn once by the relay, under a small status badge. */
+  .body img.thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #0c0c10; }
+  .poster.on-thumb { inset: auto auto 10px 10px; flex-direction: row; gap: 8px; padding: 5px 10px; border-radius: 8px;
+    background: rgba(16,16,20,.82); border: 1px solid #2f2f39; max-width: calc(100% - 20px); }
+  .poster.on-thumb .icon { font-size: 16px; }
   /* A loaded tile's playback: play/pause, a timeline to press or drag, the time, and Live while scrubbing a running one. */
   .tctl { display: none; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid #23232b; user-select: none; }
   .tile.has-player .tctl { display: flex; }
@@ -211,6 +216,27 @@
     if (view.state === 'loaded' && view.iframe) return
     body.replaceChildren()
     const poster = text('div', 'poster')
+    const thumb = thumbs.get(tile.key)
+    if (view.state === 'idle' && thumb?.status === 'ready' && !tile.isLive) {
+      // The run's last frame, with its status on a badge; the recording loads on a double-click or the button.
+      if (!view.parts.thumb) {
+        const img = Object.assign(document.createElement('img'), { className: 'thumb', alt: '' })
+        // The tile takes the run's own shape.
+        img.onload = () => { if (img.naturalWidth && !view.iframe) body.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}` }
+        img.src = `${thumb.url}?${q()}`
+        view.parts.thumb = img
+      }
+      poster.classList.add('on-thumb')
+      poster.append(text('div', `icon ${tile.status}`, icon), text('div', 'why', tile.bugTitles[0] ?? label))
+      if (tile.recordingId && embed) poster.append(text('div', 'why', '· double-click to play'))
+      else if (tile.recordingId) {
+        const load = text('button', '', 'Play')
+        load.addEventListener('click', () => enqueue(tile.key, true))
+        poster.append(load)
+      }
+      body.append(view.parts.thumb, poster)
+      return
+    }
     if (view.state === 'error') {
       poster.append(text('div', 'icon failed', '✕'), text('div', 'msg', view.error || 'Could not load this recording'))
       const retry = text('button', '', 'Retry')
@@ -308,6 +334,39 @@
     syncControls(view)
   }
   setInterval(() => { for (const [, view] of views) if (view.iframe) syncControls(view) }, 250)
+
+  // --------------------------------------------------------- thumbnails
+  // Finished runs that are not playing show their last frame, which the relay draws once per run
+  // (the QA API keeps no screenshot). Asked for in order, a few at a time; pending ones are asked again.
+  /** tile key -> { status: 'pending'|'ready'|'error', url, askedAt } */
+  const thumbs = new Map()
+  let thumbAsks = 0
+  async function askThumb(view) {
+    const t = view.tile
+    thumbAsks++
+    thumbs.set(t.key, { ...(thumbs.get(t.key) ?? { status: 'pending', url: null }), askedAt: Date.now() })
+    try {
+      const res = await post('/qa/thumbnail', { projectId, kind: t.kind, sourceId: t.sourceId, title: t.title, goal: t.goal })
+      if (!res.ok) throw new Error(res.data.error)
+      thumbs.set(t.key, { status: res.data.status, url: res.data.url, askedAt: Date.now() })
+      if (res.data.status === 'ready' && views.get(t.key) === view) update(view, view.tile)
+    } catch {
+      thumbs.set(t.key, { status: 'error', url: null, askedAt: Date.now() })
+    } finally {
+      thumbAsks--
+    }
+  }
+  function pumpThumbs() {
+    for (const tile of tiles) {
+      if (thumbAsks >= 4) return
+      const view = views.get(tile.key)
+      if (!view || tile.isLive || !tile.recordingId || tile.status === 'never-run' || view.iframe) continue
+      const known = thumbs.get(tile.key)
+      if (known && (known.status !== 'pending' || Date.now() - known.askedAt < 3000)) continue
+      askThumb(view)
+    }
+  }
+  setInterval(pumpThumbs, 1000)
 
   // ------------------------------------------------------------ loading
   const frames = () => [...views.values()].filter(v => v.iframe).length
