@@ -20,7 +20,7 @@
       "name": "replay-qa",
       "source": "./claude-code/replay-qa",
       "description": "Run Replay QA from Claude Code and watch explorations and journey runs live: inline rrweb players in the conversation and a canvas that streams every journey in parallel.",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "category": "development",
       "homepage": "https://docs.replay.io/basics/replay-qa/agent-integration"
     }

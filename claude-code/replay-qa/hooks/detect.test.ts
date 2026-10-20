@@ -78,3 +78,13 @@ test('finds JSON values with braces and escaped quotes inside strings', () => {
   const values = jsonValues('lead\n{ "a": "x } \\" y", "n": [1, {"b": 2}] }\ntail')
   expect(values).toEqual([{ a: 'x } " y', n: [1, { b: 2 }] }])
 })
+
+test('notices a QA server other than the default', () => {
+  expect(parseQaCommand('REPLAY_QA_API_BASE=https://pr-1--qa.netlify.app/api/v1 node scripts/status.js proj-a')).toEqual({
+    script: 'status', projectId: 'proj-a', startsRun: false, server: 'https://pr-1--qa.netlify.app/api/v1',
+  })
+  expect(parseQaCommand('export REPLAY_QA_URL=https://pr-1--qa.netlify.app && node scripts/full-qa.js')?.server).toBe('https://pr-1--qa.netlify.app')
+  const runbook = parseQaOutput('```sh\nnpx --yes replayqa proxy --project proj-a --qa-url https://pr-1--qa.netlify.app\n```')
+  expect(runbook.qaUrl).toBe('https://pr-1--qa.netlify.app')
+  expect(runbook.projectId).toBe('proj-a')
+})
