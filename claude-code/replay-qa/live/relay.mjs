@@ -28,6 +28,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.REPLAY_QA_LIVE_DIR || path.join(os.homedir(), '.claude', 'replay-qa-live')
 const REC_DIR = path.join(DATA_DIR, 'recordings')
 const FRAME_DIR = path.join(DATA_DIR, 'frames')
+const THUMB_DIR = path.join(DATA_DIR, 'thumbs')
 const TOKEN = process.env.REPLAY_QA_LIVE_TOKEN || crypto.randomUUID()
 const SERVERS_FILE = path.join(DATA_DIR, 'servers.json')
 const PLAYER_W = 1280
@@ -44,7 +45,7 @@ const MAX_API_CONCURRENCY = 4
 /** Recordings kept in memory with their events; older finished ones are re-read from disk. */
 const MAX_RESIDENT = 8
 
-for (const dir of [REC_DIR, FRAME_DIR]) fs.mkdirSync(dir, { recursive: true })
+for (const dir of [REC_DIR, FRAME_DIR, THUMB_DIR]) fs.mkdirSync(dir, { recursive: true })
 
 const log = (...args) => process.stderr.write(`[replay-qa-live relay] ${args.join(' ')}\n`)
 const safeId = id => String(id).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
@@ -798,6 +799,79 @@ async function startCanvasView(projectId, { width = CANVAS_W, height = CANVAS_H 
   await startView(id, url, w, h, { kind: 'canvas', mode: 'canvas' })
 }
 
+// ---------------------------------------------------------------- thumbnails
+// The QA API keeps no screenshot of a run, so a finished recording's last frame is drawn once in the
+// renderer and kept as a PNG: the canvas shows it on tiles that are not playing. A finished recording
+// never changes, so neither does its thumbnail.
+
+const THUMB_W = 640
+const MAX_THUMB_JOBS = 2
+/** recording id -> its thumbnail job, while it runs or after it failed (with why). */
+const thumbJobs = new Map()
+const thumbQueue = []
+let thumbsRunning = 0
+const thumbFile = id => path.join(THUMB_DIR, `${safeId(id)}.png`)
+
+/** `ready` with the file, `pending` while it is read and drawn, or `error` with why. */
+function thumbnailState(id) {
+  if (fs.existsSync(thumbFile(id))) return { status: 'ready' }
+  const job = thumbJobs.get(id)
+  return job ? { status: job.error ? 'error' : 'pending', error: job.error ?? null } : null
+}
+
+/** Queues a thumbnail of a finished source; at most MAX_THUMB_JOBS read and draw at once. */
+function requestThumbnail(source) {
+  const id = recordingId(source.kind, source.sourceId)
+  const known = thumbnailState(id)
+  if (known && known.status !== 'error') return { id, ...known }
+  const job = { source, error: null }
+  thumbJobs.set(id, job)
+  thumbQueue.push(id)
+  pumpThumbnails()
+  return { id, status: 'pending', error: null }
+}
+
+function pumpThumbnails() {
+  while (thumbsRunning < MAX_THUMB_JOBS && thumbQueue.length) {
+    const id = thumbQueue.shift()
+    const job = thumbJobs.get(id)
+    if (!job) continue
+    thumbsRunning++
+    drawThumbnail(id, job.source)
+      .then(() => thumbJobs.delete(id))
+      .catch(err => { job.error = err.message; log('thumbnail failed', id, err.message) })
+      .finally(() => { thumbsRunning--; pumpThumbnails() })
+  }
+}
+
+async function drawThumbnail(id, source) {
+  const rec = await watch(source)
+  await loops.get(rec.id)
+  if (rec.status !== 'ended') throw new Error(rec.error || `the recording is ${rec.status}`)
+  if (rec.evicted) hydrate(rec)
+  const size = playerSize(rec)
+  const width = THUMB_W
+  const height = Math.round((THUMB_W * size.height) / size.width)
+  const url = `${base()}/player/${encodeURIComponent(rec.id)}?mode=replay&t=${durationOf(rec)}&paused=1&chrome=0&sub=0&token=${TOKEN}`
+  const target = await openTarget(url, width, height, () => {})
+  try {
+    let ready = false
+    for (let i = 0; i < 100 && !ready; i++) {
+      await sleep(150)
+      ready = await evaluate(target.sessionId, 'Boolean(window.__ready)').catch(() => false)
+    }
+    if (!ready) throw new Error('the recording did not draw')
+    // Two frames, so the paused moment is painted.
+    await evaluate(target.sessionId, 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))')
+    const { data } = await chrome.send('Page.captureScreenshot', { format: 'png' }, target.sessionId)
+    const tmp = `${thumbFile(id)}.${process.pid}.tmp`
+    await fsp.writeFile(tmp, Buffer.from(data, 'base64'))
+    await fsp.rename(tmp, thumbFile(id))
+  } finally {
+    await closeTarget(target)
+  }
+}
+
 /** Stops the view for `id`; with `only`, just when that one is still current. */
 async function stopPlayer(id, only) {
   const player = players.get(id)
@@ -950,6 +1024,23 @@ const server = http.createServer(async (req, res) => {
         else return send(res, 400, { error: `unknown player mode ${mode}` })
         return send(res, 200, framesSnapshot().frames[rec.id] ?? null)
       }
+    }
+
+    // POST /qa/thumbnail { projectId, kind, sourceId, title? } -> { id, status: ready|pending|error, url? }: the last
+    // frame of a finished source, drawn once; ask again while it is pending
+    if (req.method === 'POST' && parts[0] === 'qa' && parts[1] === 'thumbnail') {
+      const { projectId, kind, sourceId, title, goal } = await readJson(req)
+      if (!projectId || !SOURCE_KEY[kind] || !sourceId) return send(res, 400, { error: 'projectId, kind and sourceId required' })
+      const state = requestThumbnail({ projectId, kind, sourceId, title, goal })
+      return send(res, 200, { ...state, url: state.status === 'ready' ? `/thumbs/${encodeURIComponent(state.id)}.png` : null })
+    }
+
+    // GET /thumbs/:id.png -> a drawn thumbnail
+    if (req.method === 'GET' && parts[0] === 'thumbs' && parts[1]) {
+      const file = thumbFile(parts[1].replace(/\.png$/, ''))
+      if (!fs.existsSync(file)) return send(res, 404, { error: 'no thumbnail' })
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=31536000, immutable' })
+      return res.end(fs.readFileSync(file))
     }
 
     // POST /canvas/:project/view { on, width?, height? } -> screencast the canvas page for the terminal

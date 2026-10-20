@@ -7,7 +7,8 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
   it, with its narration, streaming while it runs and scrubbable once it ends.
 - **A canvas.** `/replayqa canvas` opens every journey of the project as a grid of rrweb players.
   Running explorations and journey runs stream live, in parallel; finished journeys show their
-  latest run and load on click. The same canvas opens in a browser tab, where it pans and zooms:
+  latest run and load on click. A finished tile that is not playing shows the run's last frame: the
+  QA API keeps no screenshot, so the relay draws one per run, once, and keeps it in `thumbs/`. The same canvas opens in a browser tab, where it pans and zooms:
   pinch or Ctrl/⌘-scroll to zoom, scroll or drag to pan, double-click a tile to focus it, `0` to fit.
   In the terminal the pane's picture is that canvas alone, sized to the pane: scroll over it to pan
   up and down (Claude Code passes a pane no ⌘-scroll, sideways scroll or pinch), drag to pan, double-click a tile to focus (and load) it, use the footer's

@@ -135,3 +135,33 @@ test('reports a missing token and a missing project plainly', async t => {
   assert.equal(res.status, 200)
   assert.match(res.data.error, /No Replay QA project nope/)
 })
+
+test('draws a finished run\'s last frame once, as the thumbnail the canvas shows', async t => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-relay-'))
+  const mock = await startMock({
+    projects: [{
+      id: 'p1', name: 'Shop', journeys: [{ id: 'j1', name: 'Checkout' }],
+      runs: [{ id: 'run-a', journey_id: 'j1', status: 'completed', title: 'Checkout', events: synthEvents({ title: 'Checkout', steps: 8 }) }],
+    }],
+  })
+  const relay = await startRelay(mock.url, dataDir)
+  t.after(async () => { relay.stop(); await mock.close(); fs.rmSync(dataDir, { recursive: true, force: true }) })
+  const ask = () => relay.call('POST', '/qa/thumbnail', { projectId: 'p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
+  const first = await ask()
+  assert.equal(first.status, 200)
+  assert.equal(first.data.id, 'run-a')
+  const done = await until(async () => {
+    const r = await ask()
+    return r.data.status !== 'pending' && r
+  }, 60_000)
+  if (done.data.status === 'error' && /chrom|browser|executable/i.test(done.data.error ?? '')) return t.skip(`no renderer: ${done.data.error}`)
+  assert.equal(done.data.status, 'ready', done.data.error ?? '')
+  const png = await fetch(`http://127.0.0.1:${relay.info.port}${done.data.url}?token=${relay.info.token}`)
+  assert.equal(png.headers.get('content-type'), 'image/png')
+  const bytes = Buffer.from(await png.arrayBuffer())
+  assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
+  // Asked again, it is the same file: nothing is read or drawn twice.
+  const reads = mock.calls.filter(c => c.includes('recording-events')).length
+  assert.equal((await ask()).data.status, 'ready')
+  assert.equal(mock.calls.filter(c => c.includes('recording-events')).length, reads)
+})
