@@ -25,7 +25,14 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
 The API makes a few things necessary, handled in `qa-stream.mjs`: a response over 6 MB is a 502, so pages
 start at 20 events and halve until they fit (full snapshots are large); an rrweb event too big for one
 row arrives as `rrweb-chunk` rows that are joined back together; and a running recording is followed from
-the last row seen. Authentication is the same token the scripts use (`REPLAY_QA_API_KEY`,
+the last row seen.
+
+A project on another QA server (a PR preview, staging) is read from that server. The relay takes it
+from a running tunnel (`replayqa proxy|run --project <id> --qa-url <url>`, the command the server's own
+reverse-proxy runbook prints), or from what the hooks module saw: a dashboard URL given to
+`/replayqa canvas <url>`, `REPLAY_QA_API_BASE` or `REPLAY_QA_URL` on a script's command, `--qa-url` in a
+script's output, or `proxy.qa-url` in `.replay/config.json`. It remembers each in `servers.json`; anything
+else uses `REPLAY_QA_API_BASE`, `REPLAY_QA_URL` or qa.replay.io. Authentication is the same token the scripts use (`REPLAY_QA_API_KEY`,
 `REPLAY_API_KEY`, `REPLAY_ACCESS_TOKEN`, or `~/.replay/profile/auth.json`).
 
 ## Requirements

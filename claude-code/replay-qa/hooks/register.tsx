@@ -58,6 +58,8 @@ type Tile = {
 
 type Overview = {
   project: { id: string; name: string; target_url: string | null; status: string } | null
+  /** The QA server's API base when it is not the default one (a PR preview, staging). */
+  server?: string | null
   error: string | null
   updatedAt: number
   following: boolean
@@ -184,23 +186,42 @@ const canvasPage = (projectId: string) => relayUrl(`/canvas/${encodeURIComponent
 
 // ---------------------------------------------------------------- projects
 
-/** `.replay/config.json` at the git root, where the scripts keep `qa-project-id`. */
-async function configProjectId($: EngineInterface): Promise<string | null> {
+/**
+ * `.replay/config.json` at the git root: the scripts keep `qa-project-id` there, and the replayqa
+ * CLI the QA server its tunnel talks to (`proxy.qa-url`, set for a PR preview or staging).
+ */
+async function readConfig($: EngineInterface): Promise<{ projectId: string | null; qaUrl: string | null }> {
   try {
     const top = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { timeoutMs: 5_000, ...(state.cwd ? { cwd: state.cwd } : {}) })
     const root = top.exitCode === 0 ? top.stdout.trim() : state.cwd
-    if (!root) return null
-    const config = JSON.parse(await $.fs.read(`${root}/.replay/config.json`)) as Record<string, unknown>
-    const id = config['qa-project-id']
-    return typeof id === 'string' && id.trim() ? id.trim() : null
+    if (!root) return { projectId: null, qaUrl: null }
+    const config = JSON.parse(await $.fs.read(`${root}/.replay/config.json`)) as Record<string, any>
+    const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+    return { projectId: text(config['qa-project-id']), qaUrl: text(config.proxy?.['qa-url']) }
   } catch {
-    return null
+    return { projectId: null, qaUrl: null }
   }
 }
 
 /** The project to act on: the one named, else the repo's configured one, else the last seen. */
 async function resolveProjectId($: EngineInterface, named?: string | null): Promise<string | null> {
-  return named || (await configProjectId($)) || state.lastProjectId
+  return named || (await readConfig($)).projectId || state.lastProjectId
+}
+
+/**
+ * A `/replayqa` argument: a project id, or a dashboard URL, which also names the QA server, such
+ * as a PR preview's `https://pr-1--qa.netlify.app/projects/proj-x/test-runs/…`.
+ */
+function parseProjectArg(arg: string | undefined): { projectId?: string; server?: string } {
+  if (!arg) return {}
+  const projectId = /proj-[A-Za-z0-9_-]+/.exec(arg)?.[0]
+  return { ...(projectId ? { projectId } : {}), ...(/^https?:\/\//.test(arg) ? { server: arg } : {}) }
+}
+
+/** The QA server a project is on when nothing named one: the repo's `proxy.qa-url`, for the repo's project. */
+async function configServer($: EngineInterface, projectId: string): Promise<string | undefined> {
+  const config = await readConfig($)
+  return config.qaUrl && config.projectId === projectId ? config.qaUrl : undefined
 }
 
 async function rememberProject($: EngineInterface, projectId: string): Promise<void> {
@@ -209,9 +230,13 @@ async function rememberProject($: EngineInterface, projectId: string): Promise<v
   await $.store.set(LAST_PROJECT_KEY, projectId)
 }
 
-/** Turns the project's running work into recordings as it starts; resolves with its overview. */
-async function followProject($: EngineInterface, projectId: string): Promise<Overview> {
-  const overview = await relayJson<Overview>($, '/qa/follow', { projectId, on: true })
+/**
+ * Turns the project's running work into recordings as it starts; resolves with its overview.
+ * `server` names the QA server it is on when that is not the default (the relay also finds a
+ * running `replayqa proxy --qa-url` tunnel for it by itself).
+ */
+async function followProject($: EngineInterface, projectId: string, server?: string): Promise<Overview> {
+  const overview = await relayJson<Overview>($, '/qa/follow', { projectId, on: true, ...(server ? { server } : {}) })
   state.overviews.set(projectId, overview)
   state.activeAt.set(projectId, Date.now())
   await rememberProject($, projectId)
@@ -313,7 +338,8 @@ async function handleQaResult(
     $.ui.log('replay-qa: no project id in the output, the arguments or .replay/config.json')
     return
   }
-  const overview = await followProject($, projectId)
+  const server = command?.server ?? parsed.qaUrl ?? (await configServer($, projectId))
+  const overview = await followProject($, projectId, server)
   if (startedExploration && parsed.explorationId) {
     await attachRow($, rowId, {
       projectId, kind: 'exploration', sourceId: parsed.explorationId,
@@ -351,8 +377,8 @@ async function reviveRow($: EngineInterface, row: Row): Promise<void> {
 
 // ------------------------------------------------------------------ canvas
 
-async function showCanvas($: EngineInterface, projectId: string): Promise<void> {
-  await followProject($, projectId)
+async function showCanvas($: EngineInterface, projectId: string, server?: string): Promise<void> {
+  await followProject($, projectId, server)
   state.canvasProjectId = projectId
   await $.ui.open({ id: PANE, title: 'Replay QA', rows: 26 })
   await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width: 1600, height: 900 })
@@ -489,7 +515,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'replayqa',
       description: 'Live Replay QA: the canvas of every journey, running explorations and re-tests',
-      argumentHint: '[canvas|follow|unfollow|live|open] [project or recording]',
+      argumentHint: '[canvas|follow|unfollow|live|open] [project id, dashboard URL or recording]',
     })
     return started
   })
@@ -499,19 +525,21 @@ export const register: Register = on => {
     const [verb = '', arg] = e.args.trim().split(/\s+/)
     try {
       if (verb === 'canvas' || verb === 'follow' || verb === 'unfollow') {
-        const projectId = await resolveProjectId($, arg)
-        if (!projectId) return { text: 'No Replay QA project: pass its id (proj-…), or run a Replay QA script first so .replay/config.json names one.' }
+        const named = parseProjectArg(arg)
+        const projectId = await resolveProjectId($, named.projectId)
+        if (!projectId) return { text: 'No Replay QA project: pass its id (proj-…) or dashboard URL, or run a Replay QA script first so .replay/config.json names one.' }
+        const server = named.server ?? (await configServer($, projectId))
         if (verb === 'unfollow') {
           await unfollowProject($, projectId)
           updateStatusLine($)
           return { text: `No longer following ${projectId}.` }
         }
         if (verb === 'canvas') {
-          await showCanvas($, projectId)
+          await showCanvas($, projectId, server)
           const o = state.overviews.get(projectId)
           return { text: `Replay QA canvas for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.` }
         }
-        const o = await followProject($, projectId)
+        const o = await followProject($, projectId, server)
         return { text: `Following ${o.project?.name ?? projectId}: ${o.counts.live} live. Running explorations and test runs stream into the canvas (/replayqa canvas).` }
       }
       if (verb === 'live' || verb === 'open') {
