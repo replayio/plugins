@@ -10,8 +10,10 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
   latest run and load on click. The same canvas opens in a browser tab, where it pans and zooms:
   pinch or Ctrl/⌘-scroll to zoom, scroll or drag to pan, double-click a tile to focus it, `0` to fit.
   In the terminal the pane's picture is that canvas alone, sized to the pane: scroll over it to zoom
-  around the pointer, drag to pan, double-click a tile to focus (and load) it, and once clicked
-  `+` `-` `0` `1` and the arrows. `hooks/camera.tsx` turns those into the relay's `/canvas/:project/camera`
+  around the pointer, drag to pan, double-click a tile to focus (and load) it, use the footer's
+  `−` `100%` `+` `Fit` buttons, or once clicked `+` `-` `0` `1` and the arrows. Both views have a
+  minimap in the corner (tiles in their status colours, the view outlined): press or drag on it to
+  move the view there. `hooks/camera.tsx` turns those into the relay's `/canvas/:project/camera`
   moves, which it runs in the screencast page.
 
 ## How it works

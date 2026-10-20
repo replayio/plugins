@@ -3,13 +3,22 @@ import type { ClientKeyEvent, ClientPointerEvent, ClientSurface } from 'claude-c
 
 // Laid over the canvas picture in the pane, it turns the pointer and keys into camera moves for
 // the hooks module, which hands them to the relay's screencast: drag to pan, double-click a tile
-// to focus it (the background to fit), and once clicked + − 0 1 and the arrows. The wheel zooms
-// through the pane's ui.scroll instead, as a Client gets no wheel.
+// to focus it (the background to fit), press or drag on the minimap to move the view there, and
+// once clicked + − 0 1 and the arrows. The wheel zooms through the pane's ui.scroll instead, as a
+// Client gets no wheel.
 //
 // Points and distances are posted as fractions of the picture, so nothing here knows pixels.
 
-/** A drag posts its total from where it began: a post replaced within a frame loses nothing. */
-type Drag = { id: number; x: number; y: number; moved: boolean }
+export type CameraProps = {
+  /** Where the canvas draws its minimap, in fractions of the picture; null before it reported one. */
+  minimap: { x: number; y: number; w: number; h: number } | null
+}
+
+/**
+ * A drag posts its total from where it began: a post replaced within a frame loses nothing. One
+ * that began on the minimap moves the view to the point under the pointer instead.
+ */
+type Drag = { id: number; x: number; y: number; moved: boolean; onMinimap: boolean }
 type Local = { drag: Drag | null; lastClick: { at: number; x: number; y: number } | null; drags: number }
 
 /** Each instance's pointer state, kept off `surface.state` so moving the pointer redraws nothing. */
@@ -17,7 +26,8 @@ const locals = new WeakMap<object, Local>()
 
 const DOUBLE_CLICK_MS = 400
 
-export default function Camera(_props: unknown, surface: ClientSurface) {
+export default function Camera(raw: unknown, surface: ClientSurface) {
+  const props = (raw ?? { minimap: null }) as CameraProps
   const { Box } = surface.elements
   let local = locals.get(surface)
   if (!local) locals.set(surface, (local = { drag: null, lastClick: null, drags: 0 }))
@@ -26,11 +36,34 @@ export default function Camera(_props: unknown, surface: ClientSurface) {
   const at = (e: ClientPointerEvent) => ({ x: e.fine?.x ?? e.x + 0.5, y: e.fine?.y ?? e.y + 0.5 })
   const columns = () => Math.max(1, surface.columns)
   const rows = () => Math.max(1, surface.rows)
+  /** The point as fractions of the minimap, or null when it is not over the minimap. */
+  const onMinimap = (p: { x: number; y: number }) => {
+    const m = props.minimap
+    if (!m || m.w <= 0 || m.h <= 0) return null
+    const u = (p.x / columns() - m.x) / m.w
+    const v = (p.y / rows() - m.y) / m.h
+    return u >= 0 && u <= 1 && v >= 0 && v <= 1 ? { x: u, y: v } : null
+  }
+  const jump = (p: { x: number; y: number }) => {
+    const m = props.minimap
+    if (!m) return
+    const clamp = (n: number) => Math.max(0, Math.min(1, n))
+    surface.post({ type: 'minimap', x: clamp((p.x / columns() - m.x) / m.w), y: clamp((p.y / rows() - m.y) / m.h) })
+  }
 
   surface.onPointer((e: ClientPointerEvent) => {
     const p = at(e)
     if (e.type === 'down' && e.button === 'left') {
-      l.drag = { id: ++l.drags, x: p.x, y: p.y, moved: false }
+      const mini = onMinimap(p)
+      l.drag = { id: ++l.drags, x: p.x, y: p.y, moved: false, onMinimap: Boolean(mini) }
+      if (mini) {
+        l.lastClick = null
+        jump(p)
+      }
+    } else if (e.type === 'move' && l.drag?.onMinimap && e.button) {
+      jump(p)
+    } else if (e.type === 'up' && l.drag?.onMinimap) {
+      l.drag = null
     } else if (e.type === 'move' && l.drag && e.button) {
       const dx = p.x - l.drag.x
       const dy = p.y - l.drag.y

@@ -961,8 +961,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, framesSnapshot().frames[id] ?? null)
     }
 
-    // POST /canvas/:project/camera { op: zoom|pan|focus|fit|actual, factor?, x?, y?, dx?, dy? } -> move the
-    // screencast canvas's camera; points and distances are fractions of the picture
+    // POST /canvas/:project/camera { op: zoom|pan|focus|minimap|fit|actual|state, factor?, x?, y?, dx?, dy? } -> move
+    // the screencast canvas's camera; points and distances are fractions of the picture (of the minimap for
+    // `minimap`). Answers { result: { k, minimap } }: the zoom, and where the minimap sits in the picture.
     if (req.method === 'POST' && parts[0] === 'canvas' && parts[1] && parts[2] === 'camera') {
       const player = players.get(canvasViewId(parts[1]))
       if (!player?.sessionId) return send(res, 409, { error: 'the canvas is not on screen' })
@@ -972,6 +973,8 @@ const server = http.createServer(async (req, res) => {
         zoom: [n(factor, 0.1, 10, 1), n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
         pan: [n(dx, -10, 10, 0), n(dy, -10, 10, 0)],
         focus: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
+        minimap: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
+        state: [],
         fit: [],
         actual: [],
       }[op]
