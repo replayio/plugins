@@ -1,7 +1,7 @@
 {
   "name": "replayio",
-  "version": "0.1.1",
-  "description": "Use Replay.io Pro from Claude Code with Replay Chromium recordings, MP4 evidence, Replay MCP debugging, and worker/critic proof-loop subagents.",
+  "version": "0.2.0",
+  "description": "Use Replay.io Pro from Claude Code with Replay Chromium recordings, inline live and scrubbable browser players, MP4 evidence, Replay MCP debugging, and worker/critic proof-loop subagents.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -19,6 +19,8 @@
     "recording",
     "mp4",
     "subagents",
-    "proof"
+    "proof",
+    "live-preview",
+    "rrweb"
   ]
 }

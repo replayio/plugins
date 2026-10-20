@@ -302,7 +302,26 @@ function waitForRecentRecordings(sessionStartedAt, options = {}) {
   return { recordings: latest, timedOut: true, error: listError || undefined };
 }
 
+/** Signed out, `replayio upload` starts an interactive browser sign-in and waits on it. */
+function isSignedOut() {
+  if (process.env.REPLAY_API_KEY) return false;
+  const who = run("replayio", ["whoami"], { timeoutMs: 30000 });
+  return /not authenticated/i.test(`${who.stdout || ""}${who.stderr || ""}`);
+}
+
 function uploadRecordings(sessionStartedAt, options = {}) {
+  if (isSignedOut()) {
+    return {
+      command: "upload",
+      result: {
+        ok: false,
+        status: 1,
+        stderr:
+          "Not signed in to Replay. Recordings stay local. Run `replayio login` in the background (it opens a browser sign-in), then stop and ask the user to tell you once they have signed in before uploading.",
+      },
+      needs_login: true,
+    };
+  }
   const uploadAll = process.env.REPLAYIO_UPLOAD_ALL === "1" ? run("replayio", ["upload-all"], { timeoutMs: 180000 }) : undefined;
   if (uploadAll?.ok) {
     if (/\(failed\)|Upload failed/i.test(uploadAll.stdout || "")) {

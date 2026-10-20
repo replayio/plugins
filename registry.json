@@ -425,8 +425,8 @@
       "name": "claude-pro",
       "type": "registry:item",
       "title": "Replay.io Pro Claude Code Plugin",
-      "description": "Claude Code Replay.io Pro bundle for Replay Chromium recordings, verified MP4 evidence, Replay MCP debugging, lifecycle hooks, and worker/critic proof-loop subagents.",
-      "docs": "After installing, start Claude Code from the project root. The Pro skill should load from `.claude/skills/replayio`, and worker/critic subagents are installed at `.claude/agents/replay-worker.md` and `.claude/agents/replay-critic.md`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replayio\n```\n\nUse `/replayio:record-replay` for direct browser evidence or `/replayio:replay-proof-loop` for the worker/critic proof loop when commands are available.",
+      "description": "Claude Code Replay.io Pro bundle for Replay Chromium recordings, inline live and scrubbable browser players, verified MP4 evidence, Replay MCP debugging, lifecycle hooks, and worker/critic proof-loop subagents.",
+      "docs": "After installing, start Claude Code from the project root. The Pro skill should load from `.claude/skills/replayio`, and worker/critic subagents are installed at `.claude/agents/replay-worker.md` and `.claude/agents/replay-critic.md`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replayio\n```\n\nUse `/replayio:record-replay` for direct browser evidence or `/replayio:replay-proof-loop` for the worker/critic proof loop when commands are available.\n\nInline live players (a live, scrubbable view of each browser Claude opens, shown in the transcript) use Claude Code function hooks: set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (for example in the `env` block of `~/.claude/settings.json`) and use a kitty-graphics terminal such as Ghostty or kitty. `/replayio` lists recordings and `/replayio library` opens all of them in the browser.",
       "files": [
         {
           "path": "claude-code/replayio/.claude-plugin/plugin.json",
@@ -444,6 +444,106 @@
           "target": "~/.claude/skills/replayio/hooks/hooks.json"
         },
         {
+          "path": "claude-code/replayio/hooks/register.tsx",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/register.tsx"
+        },
+        {
+          "path": "claude-code/replayio/hooks/detect.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/detect.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/scrubber.tsx",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/scrubber.tsx"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/card.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/card.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/cards.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/cards.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/render.tsx",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/render.tsx"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/index.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/index.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/overview.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/overview.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/code.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/code.ts"
+        },
+        {
+          "path": "claude-code/replayio/hooks/mcp/tools/react.ts",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/hooks/mcp/tools/react.ts"
+        },
+        {
+          "path": "claude-code/replayio/tsconfig.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/tsconfig.json"
+        },
+        {
+          "path": "claude-code/replayio/live/README.md",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/README.md"
+        },
+        {
+          "path": "claude-code/replayio/live/relay.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/relay.mjs"
+        },
+        {
+          "path": "claude-code/replayio/live/player.html",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/player.html"
+        },
+        {
+          "path": "claude-code/replayio/live/library.html",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/library.html"
+        },
+        {
+          "path": "claude-code/replayio/live/tracer.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/tracer.js"
+        },
+        {
+          "path": "claude-code/replayio/live/vendor/rrweb.min.js",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/vendor/rrweb.min.js"
+        },
+        {
+          "path": "claude-code/replayio/live/vendor/rrweb.min.css",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/vendor/rrweb.min.css"
+        },
+        {
+          "path": "claude-code/replayio/live/package.json",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/package.json"
+        },
+        {
+          "path": "claude-code/replayio/live/build.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/build.mjs"
+        },
+        {
           "path": "claude-code/replayio/LICENSE",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/LICENSE"
@@ -452,6 +552,11 @@
           "path": "claude-code/replayio/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/assets/replayio.svg"
+        },
+        {
+          "path": "claude-code/replayio/assets/replay-logo.png",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/assets/replay-logo.png"
         },
         {
           "path": "claude-code/replayio/commands/record-replay.md",

@@ -1,0 +1,20 @@
+{
+  "name": "replayio",
+  "owner": {
+    "name": "Replay",
+    "url": "https://replay.io"
+  },
+  "metadata": {
+    "description": "Replay.io plugins for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "replayio",
+      "source": "./claude-code/replayio",
+      "description": "Record agent browser runs in Replay Chromium, watch and scrub them inline in the conversation, upload recordings, and debug them with Replay MCP.",
+      "version": "0.2.0",
+      "category": "development",
+      "homepage": "https://docs.replay.io/basics/debugging/claude-code"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start WebM screencast capture after a browser open command, then close/transcode/upload after a browser close command.
+# After a raw browser open, start WebM capture only when a video was asked for
+# (REPLAYIO_RECORD_VIDEO=1 or REPLAYIO_MP4_PATH); after a close, transcode any capture and upload.
 # Reads Claude Code hook event JSON from stdin when available.
 
 set -euo pipefail
@@ -23,6 +24,8 @@ plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 state_path="$(pwd)/.replay/browser-session.json"
 
 start_video_after_raw_open() {
+  # Video is opt-in: only when an MP4 was asked for.
+  [ "${REPLAYIO_RECORD_VIDEO:-}" = "1" ] || [ -n "${REPLAYIO_MP4_PATH:-}" ] || return 0
   [ -f "$state_path" ] && return 0
   command -v npx >/dev/null 2>&1 || return 0
 

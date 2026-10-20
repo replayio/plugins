@@ -15,7 +15,13 @@ if command -v npx >/dev/null 2>&1; then
 fi
 
 if command -v replayio >/dev/null 2>&1; then
-  replayio upload >/dev/null 2>&1 || true
+  # Signed out, `replayio upload` starts an interactive browser sign-in and
+  # waits on it. Leave recordings local; Claude asks the user to sign in.
+  if [ -n "${REPLAY_API_KEY:-}" ] || ! replayio whoami 2>&1 | grep -qi "not authenticated"; then
+    replayio upload >/dev/null 2>&1 || true
+  else
+    echo "[replayio hook] Not signed in to Replay; recordings stay local until you run replayio login." >&2
+  fi
 fi
 
 exit 0

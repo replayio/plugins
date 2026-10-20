@@ -1,4 +1,8 @@
 {
+  "description": "Replay browser lifecycle hooks, plus the inline live players (register.tsx)",
+  "modules": [
+    "./register.tsx"
+  ],
   "hooks": {
     "PostToolUse": [
       {
