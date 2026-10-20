@@ -1,0 +1,361 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Replay QA canvas</title>
+<style>
+  :root { color-scheme: dark; --accent: #F02D5E; --cols: 3; --rows: 3; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #101014; color: #d8d8de;
+    font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  body.embed { height: 100vh; overflow: hidden; display: flex; flex-direction: column; font-size: 17px; }
+  header#head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px;
+    border-bottom: 1px solid #23232b; position: sticky; top: 0; background: #101014; z-index: 5; }
+  body.embed header#head { position: static; padding: 10px 18px; flex: none; flex-wrap: nowrap; }
+  .proj { font-size: 17px; font-weight: 700; }
+  body.embed .proj { font-size: 22px; }
+  .live-count { color: var(--accent); font-weight: 600; display: none; }
+  .live-count.on { display: inline; }
+  .live-count i, .dot.live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; margin-right: 6px; }
+  .count { color: #8a8a96; }
+  .count b { color: #d8d8de; font-weight: 600; }
+  .spacer { flex: 1; }
+  .chips, .actions { display: flex; gap: 6px; }
+  body.embed .chips, body.embed .actions { display: none; }
+  button { background: #2a2a33; color: #ddd; border: 0; border-radius: 4px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 13px; }
+  button:hover { background: #363642; }
+  button.on { background: var(--accent); color: #fff; }
+  #error { display: none; margin: 12px 20px 0; padding: 8px 12px; border-radius: 6px; background: rgba(160,24,48,.9); color: #fff; font: 12px ui-monospace, Menlo, monospace; }
+  #error.on { display: block; }
+  main#grid { display: grid; gap: 14px; padding: 18px 20px 28px; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+  body.embed main#grid { flex: 1; min-height: 0; padding: 12px 14px; gap: 12px;
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); }
+  .tile { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #17171d; border: 1px solid #23232b; border-radius: 8px; overflow: hidden; }
+  .tile.hidden { display: none; }
+  .tile.is-live { border-color: rgba(240,45,94,.55); }
+  .thead { display: flex; align-items: center; gap: 8px; padding: 8px 10px 2px; min-width: 0; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: #8b8b98; }
+  .dot.passed { background: #4ade80; } .dot.bugs { background: #fbbf24; } .dot.failed { background: #f87171; }
+  .dot.live { margin: 0; } .dot.never-run { background: #3a3a44; }
+  .title { color: #f1f1f4; font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: pointer; }
+  .title:hover { text-decoration: underline; }
+  body.embed .title { cursor: default; } body.embed .title:hover { text-decoration: none; }
+  .meta { color: #8a8a96; font-size: 12px; white-space: nowrap; margin-left: auto; padding-left: 8px; }
+  body.embed .meta { font-size: 14px; }
+  .note { padding: 0 10px 6px 27px; color: #9a9aa6; font-size: 12px; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.embed .note { font-size: 14px; }
+  .body { position: relative; background: #0c0c10; aspect-ratio: 16 / 10; width: 100%; flex: none; }
+  body.embed .body { aspect-ratio: auto; flex: 1; min-height: 0; }
+  .body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0c0c10; }
+  .poster { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    padding: 12px 18px; text-align: center; color: #8a8a96; }
+  .icon { font-size: 34px; line-height: 1; }
+  .icon.passed { color: #4ade80; } .icon.bugs { color: #fbbf24; } .icon.failed { color: #f87171; } .icon.live { color: var(--accent); }
+  .poster .bugtitle { color: #cfcfd6; font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .poster .why { font-size: 12px; }
+  .poster .msg { color: #f87171; font-size: 12px; max-width: 100%; word-break: break-word; }
+  body.embed .poster .bugtitle, body.embed .poster .why, body.embed .poster .msg { font-size: 14px; }
+  body.embed .poster button { display: none; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .empty { padding: 40px 20px; color: #77777f; text-align: center; grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<header id="head">
+  <span class="proj" id="proj">Replay QA</span>
+  <span class="live-count" id="liveCount"><i></i><span id="liveN">0</span> live</span>
+  <span class="count" id="counts"></span>
+  <span class="spacer"></span>
+  <span class="chips" id="chips">
+    <button data-filter="all" class="on">All</button><button data-filter="live">Live</button>
+    <button data-filter="bugs">Bugs</button><button data-filter="failed">Failed</button>
+  </span>
+  <span class="actions"><button id="follow" title="Stream any exploration or journey that starts running">Follow</button><button id="loadAll">Load all</button></span>
+</header>
+<div id="error"></div>
+<main id="grid"><div class="empty" id="placeholder">Loading project…</div></main>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search)
+  const projectId = decodeURIComponent(location.pathname.split('/')[2])
+  const token = params.get('token')
+  const embed = params.get('embed') === '1'
+  const MAX_FRAMES = 12      // iframes alive at once
+  const MAX_FINISHED_LOADING = 3  // finished runs read from the API at once (each is tens of pages)
+  const AUTO_FINISHED = 4    // finished tiles that load without a click
+  if (embed) document.body.classList.add('embed')
+
+  const q = (extra = '') => `${extra ? extra + '&' : ''}token=${encodeURIComponent(token)}`
+  const post = (path, body) => fetch(`${path}?${q()}`, { method: 'POST', body: JSON.stringify(body) }).then(async r => ({ ok: r.ok, data: await r.json() }))
+  const $ = id => document.getElementById(id)
+  const grid = $('grid')
+
+  /** tile key -> { el, parts, tile, state: 'idle'|'starting'|'loaded'|'error', error, iframe, ranAt } */
+  const views = new Map()
+  /** tile keys waiting for a loading slot, in order. */
+  let queue = []
+  let following = params.get('follow') !== '0'
+  let filter = 'all'
+  let tiles = []
+  let seeded = false
+  let lastOverview = null
+
+  const fmtDuration = s => (s == null ? '' : s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`)
+  const STATUS = {
+    live: ['●', 'live'], passed: ['✓', 'passed'], bugs: ['!', 'bugs'], failed: ['✕', 'failed'],
+    infra: ['⚠', 'incomplete'], incomplete: ['…', 'incomplete'], 'never-run': ['–', 'never-run'],
+  }
+  const text = (tag, cls, content) => { const e = document.createElement(tag); if (cls) e.className = cls; if (content != null) e.textContent = content; return e }
+
+  // ------------------------------------------------------------- tiles
+  function createView(tile) {
+    const el = text('article', 'tile')
+    const head = text('div', 'thead')
+    const dot = text('i', 'dot')
+    const title = text('a', 'title')
+    const meta = text('span', 'meta')
+    head.append(dot, title, meta)
+    const note = text('div', 'note')
+    const body = text('div', 'body')
+    el.append(head, note, body)
+    const view = { el, parts: { dot, title, meta, note, body }, tile, state: 'idle', error: null, iframe: null, loadedAt: 0 }
+    title.addEventListener('click', e => {
+      if (embed || !view.tile.recordingId) return
+      e.preventDefault()
+      window.open(`/player/${encodeURIComponent(view.tile.recordingId)}?mode=auto&chrome=1&${q()}`, '_blank')
+    })
+    return view
+  }
+
+  /** Header text and the poster follow the tile's data; the iframe is never touched here. */
+  function update(view, tile) {
+    view.tile = tile
+    const { dot, title, meta, note, body } = view.parts
+    const [icon, label] = STATUS[tile.status] ?? STATUS.incomplete
+    view.el.classList.toggle('is-live', tile.isLive)
+    dot.className = `dot ${tile.status}`
+    title.textContent = tile.title
+    title.title = tile.recordingId ? 'Open the full player' : tile.title
+    const loaded = tile.loaded
+    const bits = []
+    const duration = tile.durationSeconds != null ? fmtDuration(tile.durationSeconds) : loaded && loaded.durationMs ? fmtDuration(loaded.durationMs / 1000) : ''
+    if (duration) bits.push(duration)
+    if (tile.bugs) bits.push(`${tile.bugs} bug${tile.bugs === 1 ? '' : 's'}`)
+    if (loaded) bits.push(`${loaded.eventCount.toLocaleString()} events`)
+    meta.textContent = bits.join(' · ')
+    note.textContent = loaded?.note?.text ?? (tile.isLive ? 'Starting…' : tile.goal ?? '')
+    if (loaded?.meta?.width && loaded.meta.height) body.style.aspectRatio = `${loaded.meta.width} / ${loaded.meta.height}`
+    // The relay could not read the recording after all: back to a poster that says why, with Retry.
+    if (loaded?.status === 'error' && view.state === 'loaded') {
+      view.iframe?.remove()
+      view.iframe = null
+      view.state = 'error'
+      view.error = loaded.error
+    }
+    renderBody(view, icon, label)
+  }
+
+  function renderBody(view, icon, label) {
+    const { body } = view.parts
+    const tile = view.tile
+    if (view.state === 'loaded' && view.iframe) return
+    body.replaceChildren()
+    const poster = text('div', 'poster')
+    if (view.state === 'error') {
+      poster.append(text('div', 'icon failed', '✕'), text('div', 'msg', view.error || 'Could not load this recording'))
+      const retry = text('button', '', 'Retry')
+      retry.addEventListener('click', () => { view.state = 'idle'; view.error = null; enqueue(tile.key, true) })
+      poster.append(retry)
+    } else if (view.state === 'starting' || queue.includes(tile.key)) {
+      poster.append(text('div', 'icon', '…'), text('div', 'why', view.state === 'starting' ? 'Loading recording…' : 'Waiting for a loading slot…'))
+    } else {
+      poster.append(text('div', `icon ${tile.status}`, icon), text('div', 'why', tile.status === 'never-run' ? 'This journey has not run yet' : label + (tile.reason ? ` · ${tile.reason}` : '')))
+      for (const t of tile.bugTitles.slice(0, 2)) poster.append(text('div', 'bugtitle', t))
+      if (tile.recordingId) {
+        const load = text('button', '', 'Load recording')
+        load.addEventListener('click', () => enqueue(tile.key, true))
+        poster.append(load)
+      }
+    }
+    body.append(poster)
+  }
+
+  /** Create, update, drop and place tiles from an overview; existing nodes (and their iframes) are never moved. */
+  function reconcile(data) {
+    const visible = embed ? data.tiles.slice(0, MAX_FRAMES) : data.tiles
+    tiles = visible
+    const keys = new Set(visible.map(t => t.key))
+    for (const [key, view] of views) {
+      if (keys.has(key)) continue
+      view.el.remove()
+      views.delete(key)
+      queue = queue.filter(k => k !== key)
+    }
+    const prev = $('placeholder')
+    if (prev) prev.remove()
+    visible.forEach((tile, i) => {
+      let view = views.get(tile.key)
+      if (!view) {
+        view = createView(tile)
+        views.set(tile.key, view)
+        // Before the next existing tile in order, so nodes already placed stay where they are.
+        const next = visible.slice(i + 1).map(t => views.get(t.key)).find(Boolean)
+        grid.insertBefore(view.el, next ? next.el : null)
+      }
+      update(view, tile)
+    })
+    if (!visible.length) {
+      grid.replaceChildren(Object.assign(text('div', 'empty', data.error ? '' : 'No journeys or explorations yet'), { id: 'placeholder' }))
+    }
+    applyFilter()
+    layout()
+  }
+
+  function applyFilter() {
+    for (const [, view] of views) {
+      const t = view.tile
+      const show = filter === 'all' || (filter === 'live' && t.isLive) || (filter === 'bugs' && t.status === 'bugs') || (filter === 'failed' && (t.status === 'failed' || t.status === 'infra'))
+      view.el.classList.toggle('hidden', !show)
+    }
+  }
+
+  function layout() {
+    if (!embed) return
+    const n = Math.max(1, Math.min(MAX_FRAMES, tiles.length))
+    const cols = n === 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4
+    document.documentElement.style.setProperty('--cols', cols)
+    document.documentElement.style.setProperty('--rows', Math.ceil(n / cols))
+  }
+
+  // ------------------------------------------------------------ loading
+  const frames = () => [...views.values()].filter(v => v.iframe).length
+  /** Finished recordings still being read: the expensive kind, capped. */
+  const finishedLoading = () => [...views.values()].filter(v => !v.tile.isLive && (v.state === 'starting' || (v.state === 'loaded' && v.tile.loaded?.status === 'loading'))).length
+
+  function enqueue(key, front = false) {
+    const view = views.get(key)
+    if (!view || view.state === 'starting' || view.state === 'loaded' || !view.tile.recordingId) return
+    if (!queue.includes(key)) front ? queue.unshift(key) : queue.push(key)
+    update(view, view.tile)
+    pump()
+  }
+
+  function pump() {
+    while (queue.length && finishedLoading() < MAX_FINISHED_LOADING) {
+      if (frames() >= MAX_FRAMES && !evictOne()) break
+      const key = queue.shift()
+      const view = views.get(key)
+      if (view && view.state !== 'starting' && view.state !== 'loaded') start(view)
+    }
+  }
+
+  /** Free a frame by returning the oldest finished tile to its poster. */
+  function evictOne() {
+    const victim = [...views.values()].filter(v => v.iframe && !v.tile.isLive).sort((a, b) => a.loadedAt - b.loadedAt)[0]
+    if (!victim) return false
+    victim.iframe.remove()
+    victim.iframe = null
+    victim.state = 'idle'
+    update(victim, victim.tile)
+    return true
+  }
+
+  async function start(view) {
+    const tile = view.tile
+    view.state = 'starting'
+    view.error = null
+    update(view, tile)
+    try {
+      const res = await post('/qa/watch', { projectId, kind: tile.kind, sourceId: tile.sourceId, title: tile.title, goal: tile.goal })
+      if (!res.ok) throw new Error(res.data.error || 'The relay could not start this recording')
+      const frame = document.createElement('iframe')
+      frame.src = `/player/${encodeURIComponent(res.data.recording.id)}?mode=auto&tile=1&chrome=0&sub=0&${q()}`
+      view.parts.body.replaceChildren(frame)
+      view.iframe = frame
+      view.state = 'loaded'
+      view.loadedAt = Date.now()
+    } catch (err) {
+      view.state = 'error'
+      view.error = err.message
+    }
+    update(view, view.tile)
+    pump()
+  }
+
+  /** Live tiles start at once and in parallel (frames permitting); a few finished ones follow. */
+  function autoLoad() {
+    for (const tile of tiles) {
+      const view = views.get(tile.key)
+      if (view && tile.isLive && view.state === 'idle' && tile.recordingId && frames() < MAX_FRAMES && !queue.includes(tile.key)) start(view)
+    }
+    if (!seeded && tiles.length) {
+      seeded = true
+      const finished = tiles.filter(t => !t.isLive && t.recordingId)
+      for (const t of embed ? finished : finished.slice(0, AUTO_FINISHED)) enqueue(t.key)
+    }
+  }
+
+  // ------------------------------------------------------------- header
+  function header(data) {
+    $('proj').textContent = data.project ? data.project.name : projectId
+    $('liveN').textContent = data.counts.live
+    $('liveCount').classList.toggle('on', data.counts.live > 0)
+    const passed = data.tiles.filter(t => t.status === 'passed').length
+    $('counts').replaceChildren(
+      ...[[passed, 'passed'], [data.counts.bugs, 'bugs'], [data.counts.failed, 'failed']].flatMap(([n, label], i) => {
+        const b = text('b', '', String(n))
+        return [i ? ' · ' : '', b, ` ${label}`]
+      }),
+    )
+    $('follow').classList.toggle('on', following)
+    $('follow').textContent = following ? 'Following' : 'Follow'
+    const err = $('error')
+    err.textContent = data.error ? `⚠ ${data.error}` : ''
+    err.classList.toggle('on', Boolean(data.error))
+  }
+
+  $('chips').addEventListener('click', e => {
+    const f = e.target.dataset?.filter
+    if (!f) return
+    filter = f
+    for (const b of $('chips').children) b.classList.toggle('on', b.dataset.filter === f)
+    applyFilter()
+  })
+  $('loadAll').addEventListener('click', () => {
+    for (const t of tiles) if (!t.isLive) enqueue(t.key)
+  })
+  $('follow').addEventListener('click', async () => {
+    following = !following
+    $('follow').classList.toggle('on', following)
+    $('follow').textContent = following ? 'Following' : 'Follow'
+    await post('/qa/follow', { projectId, on: following })
+  })
+
+  // --------------------------------------------------------------- poll
+  async function refresh() {
+    try {
+      const res = await fetch(`/qa/overview?${q(`project=${encodeURIComponent(projectId)}`)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `The relay answered ${res.status}`)
+      if (!data || !data.tiles) throw new Error('No project data yet')
+      lastOverview = data
+      header(data)
+      reconcile(data)
+      autoLoad()
+      pump()
+    } catch (err) {
+      const e = $('error')
+      e.textContent = `⚠ ${err.message}`
+      e.classList.add('on')
+    }
+    setTimeout(refresh, 3000)
+  }
+
+  ;(async () => {
+    if (following) await post('/qa/follow', { projectId, on: true }).catch(() => {})
+    refresh()
+  })()
+})()
+</script>
+</body>
+</html>

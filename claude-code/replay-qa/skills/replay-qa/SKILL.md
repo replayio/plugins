@@ -112,6 +112,18 @@ This plugin also ships command files in the plugin `commands/` directory. Invoke
 | `/replay-qa:rerun-journeys` | Use supported journey retry alternatives. |
 | `/replay-qa:report-missing-bug` | Ask Replay QA to investigate a missed issue. |
 
+With function hooks enabled the plugin also adds `/replayqa` (no namespace) for the live views: `/replayqa canvas [project]`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`.
+
+## Live Views
+
+When the Claude Code session has function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`), this plugin streams Replay QA work into the conversation. You do not run anything extra:
+
+- Starting an exploration (`start-exploration.js`), marking a bug fixed (`mark-bug.js … fixed`, which makes Replay QA re-test the journey), or reporting a missed bug (`report-missing-bug.js`) turns that call's result into a live rrweb player. The project is followed, so every exploration and journey run that is executing streams in parallel, and finished runs can be opened from the canvas.
+- `/replayqa canvas` opens a canvas of every journey in the project: running ones stream live, finished ones load on click. `/replayqa live` lists what is streaming, and `/replayqa open` opens a player in the browser.
+- The streams are read from `GET /api/v1/projects/{project_id}/recording-events` through a local relay; nothing is sent anywhere else.
+
+When you start an exploration for the user, say that the live player is in the result and mention `/replayqa canvas`. Do not poll the stream yourself: keep using `status.js` and `bugs.js` for state, and read the bug reports for findings.
+
 ## Agent Workflow
 
 Use this loop for QA and repair:

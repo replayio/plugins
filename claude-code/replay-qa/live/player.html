@@ -1,0 +1,397 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Replay QA recording</title>
+<link rel="stylesheet" href="/vendor/rrweb.min.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #101014; color: #d8d8de; overflow: hidden;
+    font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  #bar { position: absolute; top: 0; left: 0; right: 0; height: 36px; display: none; align-items: center; gap: 12px;
+    padding: 0 12px; background: #18181e; border-bottom: 1px solid #2a2a33; z-index: 5; }
+  #controls { position: absolute; bottom: 0; left: 0; right: 0; height: 44px; display: none; align-items: center; gap: 10px;
+    padding: 0 12px; background: #18181e; border-top: 1px solid #2a2a33; z-index: 5; }
+  body.chrome #bar { display: flex; }
+  body.chrome.seekable #controls { display: flex; }
+  body.chrome #stage { top: 37px; }
+  body.chrome.seekable #stage { bottom: 45px; }
+  #bar a { color: #9a9aa6; text-decoration: none; }
+  #bar a:hover { color: #fff; }
+  #title { font-weight: 600; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9a9aa6; }
+  button, select { background: #2a2a33; color: #ddd; border: 0; border-radius: 4px; padding: 5px 10px; cursor: pointer; font: inherit; }
+  button:hover { background: #363642; }
+  #toggle { min-width: 40px; }
+  #scrub { flex: 1; accent-color: #F02D5E; }
+  #time { font-variant-numeric: tabular-nums; color: #9a9aa6; min-width: 96px; text-align: right; }
+  #stage { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
+  #root { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  #root iframe { border: 0; background: #fff; }
+  #badge { position: absolute; top: 46px; left: 10px; z-index: 10; display: flex; align-items: center; gap: 6px;
+    padding: 3px 9px; border-radius: 999px; background: rgba(16,16,20,.82); color: #fff; font-weight: 600; font-size: 12px; }
+  #badge i { width: 8px; height: 8px; border-radius: 50%; background: #F02D5E; animation: pulse 1.2s infinite; }
+  #badge.replay i { background: #7aa2ff; animation: none; }
+  #badge.ended i { background: #777; animation: none; }
+  /* The headless renderer and canvas tiles: no chrome, nothing that repaints by itself. */
+  body.still #badge, body.tile #badge, body.tile #bar, body.tile #controls { display: none; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 0 24px; color: #77777f; font-size: 18px; }
+  body.tile #empty { font-size: 13px; }
+  /* The latest narration note, over the bottom of the picture. */
+  #sub { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: none; padding: 6px 12px;
+    background: rgba(16,16,20,.82); color: #f1f1f4; font-size: 13px; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sub b { color: #F02D5E; font-weight: 600; margin-right: 6px; }
+  body.tile #sub { font-size: 12px; padding: 4px 8px; }
+  body.bannered #badge { top: 74px; }
+  body.bannered.chrome #loadingText { top: 43px; }
+  body.nosub #sub { display: none !important; }
+  #banner { position: absolute; left: 0; right: 0; top: 0; z-index: 7; display: none; padding: 4px 10px;
+    background: rgba(160, 24, 48, .92); color: #fff; font: 12px ui-monospace, Menlo, monospace;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.tile #banner { font-size: 11px; padding: 3px 8px; }
+  /* A thin line while a recording is still being read from the API. */
+  #loading { position: absolute; left: 0; right: 0; top: 0; z-index: 8; display: none; height: 3px; background: #2a2a33; overflow: hidden; }
+  #loading::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: #F02D5E; animation: slide 1.1s linear infinite; }
+  #loadingText { position: absolute; right: 8px; top: 6px; z-index: 8; display: none; padding: 2px 8px; border-radius: 999px;
+    background: rgba(16,16,20,.82); color: #d8d8de; font-size: 11px; }
+  body.loading #loading, body.loading #loadingText { display: block; }
+  body.chrome #loading, body.chrome #loadingText { top: 37px; }
+  body.chrome #loadingText { top: 43px; }
+  @keyframes slide { from { left: -30%; } to { left: 100%; } }
+  body.export #banner, body.export #sub, body.export #loading, body.export #loadingText { display: none !important; }
+</style>
+</head>
+<body>
+<div id="bar"><strong>Replay QA</strong><a id="canvas" href="#">← Canvas</a><span id="title"></span><span id="url"></span></div>
+<div id="stage">
+  <div id="root"></div><div id="empty">Waiting for the first frame…</div>
+  <div id="banner"></div><div id="sub"></div>
+</div>
+<div id="loading"></div><div id="loadingText"></div>
+<div id="controls">
+  <button id="toggle" title="Space">▶</button><button id="back" title="←">−10s</button><button id="fwd" title="→">+10s</button>
+  <input id="scrub" type="range" min="0" max="1000" value="0">
+  <span id="time">0:00 / 0:00</span>
+  <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select>
+</div>
+<div id="badge"><i></i><span id="badgeText">LIVE</span></div>
+<script src="/vendor/rrweb.min.js"></script>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search)
+  const id = decodeURIComponent(location.pathname.split('/')[2])
+  const token = params.get('token')
+  const isTile = params.get('tile') === '1'
+  const withChrome = params.get('chrome') === '1' && !isTile
+  const isExport = params.get('mode') === 'export'
+  document.body.classList.add(isTile ? 'tile' : withChrome ? 'chrome' : 'still')
+  if (isExport) document.body.classList.add('export')
+  if (params.get('sub') === '0') document.body.classList.add('nosub')
+  // `q` adds query parameters ahead of the token.
+  const api = (p, q) => `/recordings/${encodeURIComponent(id)}${p}?${q ? q + '&' : ''}token=${encodeURIComponent(token)}`
+  const notify = what => { try { window.__playerEvent && window.__playerEvent(what) } catch {} }
+  const sleep = ms => new Promise(r => setTimeout(r, ms))
+  // rrweb applies added events on a microtask: a malformed one rejects there, not in our try/catch.
+  window.addEventListener('unhandledrejection', e => e.preventDefault())
+
+  const $ = s => document.getElementById(s)
+  const stage = $('stage'), root = $('root'), empty = $('empty'), badge = $('badge'), badgeText = $('badgeText')
+  const banner = $('banner'), sub = $('sub'), scrub = $('scrub'), timeLabel = $('time'), toggleButton = $('toggle')
+  let size = { width: 1280, height: 800 }
+
+  const fit = () => {
+    const scale = Math.min(stage.clientWidth / size.width, stage.clientHeight / size.height)
+    const left = (stage.clientWidth - size.width * scale) / 2
+    const top = (stage.clientHeight - size.height * scale) / 2
+    root.style.transform = `translate(${left}px, ${top}px) scale(${scale})`
+  }
+  window.addEventListener('resize', fit)
+
+  const setBadge = (kind, text) => { badge.className = kind; badgeText.textContent = text }
+  const clock = ms => {
+    const s = Math.max(0, Math.round(ms / 1000))
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  }
+  const say = text => { empty.style.display = 'flex'; empty.textContent = text }
+  /** A recording that cannot be shown: say why, and stop the badge claiming it is live. */
+  const fail = text => { say(text); setBadge('ended', 'ERROR') }
+
+  // ---------------------------------------------------------------- feed
+  const showNote = note => {
+    sub.replaceChildren()
+    if (note) {
+      if (note.step) { const b = document.createElement('b'); b.textContent = `Step ${note.step.index}`; sub.append(b) }
+      sub.append(note.text)
+    }
+    sub.style.display = note ? 'block' : 'none'
+  }
+  /** In a replay the subtitle is the latest note at or before the playhead, not the newest note. */
+  let followPlayhead = false
+  let shownNote = null
+  const syncNote = t => {
+    const startTs = boot.events[0] ? boot.events[0].timestamp : 0
+    let found = null
+    for (const i of boot.feed) if (i.kind === 'note' && i.text && i.time <= startTs + t && (!found || i.time >= found.time)) found = i
+    if (found !== shownNote) { shownNote = found; showNote(found) }
+  }
+  // Narration (thought/note rows), errors, and navigation, as the relay's `feed` items.
+  const showFeed = items => {
+    const err = [...items].reverse().find(i => i.kind === 'error')
+    if (err) { banner.textContent = '⚠ ' + err.text; banner.style.display = 'block'; document.body.classList.add('bannered') }
+    const note = [...items].reverse().find(i => i.kind === 'note' && i.text)
+    if (note && !followPlayhead) showNote(note)
+    const nav = [...items].reverse().find(i => i.kind === 'nav')
+    if (nav) $('url').textContent = nav.text
+  }
+
+  /** The recording's own description: title, status, progress. */
+  let cur = null
+  let replaying = false
+  const setRecording = rec => {
+    cur = rec
+    document.title = rec.title ? `${rec.title} — Replay QA` : 'Replay QA recording'
+    $('title').textContent = rec.title || ''
+    if (rec.url) $('url').textContent = rec.url
+    $('canvas').href = `/canvas/${encodeURIComponent(rec.projectId)}?token=${encodeURIComponent(token)}`
+    document.body.classList.toggle('loading', rec.status === 'loading')
+    // While following a stream the badge tracks the recording's own status.
+    if (!replaying) setBadge(rec.status === 'error' ? 'ended' : '', rec.status === 'loading' ? 'LOADING' : rec.status === 'error' ? 'ERROR' : rec.status === 'ended' ? 'ENDED' : 'LIVE')
+    $('loadingText').textContent = `Loading… ${rec.eventCount.toLocaleString()} events`
+    if (rec.status === 'error') {
+      banner.textContent = '⚠ ' + (rec.error || 'This recording could not be read')
+      banner.style.display = 'block'
+      document.body.classList.add('bannered')
+    }
+  }
+
+  const config = {
+    root, showWarning: false, showDebug: false, UNSAFE_replayCanvas: true,
+    mouseTail: isExport ? false : { strokeStyle: '#F02D5E', lineWidth: 3, duration: 600 },
+  }
+
+  let replayer = null
+  const mount = r => {
+    replayer = r
+    r.on('resize', d => { size = d; fit() })
+    empty.style.display = 'none'
+  }
+  const unmount = () => {
+    if (!replayer) return
+    try { replayer.pause(); replayer.destroy && replayer.destroy() } catch {}
+    replayer = null
+    root.innerHTML = ''
+  }
+
+  // The last Meta + FullSnapshot onwards is a valid, shorter start for live viewing.
+  const fromLastSnapshot = events => {
+    for (let i = events.length - 1; i > 0; i--) {
+      if (events[i].type === 2 && events[i - 1].type === 4) return events.slice(i - 1)
+    }
+    return []
+  }
+
+  const loadEvents = async () => (await fetch(api('/events'))).json()
+  let boot = await loadEvents()
+  if (!boot.recording) return fail(boot.error || 'This recording was not found')
+  setRecording(boot.recording)
+  showFeed(boot.feed)
+  // Loading and live recordings are followed as they grow; only a finished one replays.
+  // A canvas tile always follows: a finished recording then lands on its final frame, not a 1x replay.
+  const mode = isTile ? 'live'
+    : params.get('mode') === 'auto'
+      ? (boot.recording.status === 'live' || boot.recording.status === 'loading' ? 'live' : 'replay')
+      : params.get('mode')
+
+  // --------------------------------------------------------------- replay
+  // window.__ctl is how the relay drives the headless renderer (Runtime.evaluate).
+  let total = 0
+  let finished = false
+  const isPlaying = () => Boolean(replayer && !finished && replayer.service && replayer.service.state.matches('playing'))
+  const now = () => (replayer ? Math.max(0, Math.min(total, replayer.getCurrentTime())) : 0)
+  const ctl = {
+    play() {
+      if (!replayer) return
+      const from = finished || now() >= total - 50 ? 0 : now()
+      finished = false
+      replayer.play(from)
+    },
+    pause() { replayer && replayer.pause() },
+    toggle() { isPlaying() ? ctl.pause() : ctl.play() },
+    seek(ms) {
+      if (!replayer) return
+      const t = Math.max(0, Math.min(total, ms))
+      const resume = isPlaying()
+      finished = false
+      resume ? replayer.play(t) : replayer.pause(t)
+    },
+    seekBy(ms) { ctl.seek(now() + ms) },
+    speed(x) { replayer && replayer.setConfig({ speed: x }) },
+    /** For export: jump to `ms` paused, resolve once painted. */
+    frameAt(ms) {
+      replayer.pause(Math.max(0, Math.min(total, ms)))
+      return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))
+    },
+    /** Times of the recording's events, from its start, for the export's idle trimming. */
+    eventTimes() { return boot.events.map(e => e.timestamp - boot.events[0].timestamp) },
+    state() { return { t: Math.round(now()), total: Math.round(total), paused: !isPlaying(), finished } },
+  }
+  window.__ctl = ctl
+
+  let lastReport = ''
+  const report = () => {
+    const s = ctl.state()
+    if (followPlayhead) syncNote(s.t)
+    if (document.activeElement !== scrub) scrub.value = total ? String(Math.round((s.t / total) * 1000)) : '0'
+    timeLabel.textContent = `${clock(s.t)} / ${clock(total)}`
+    toggleButton.textContent = s.paused ? '▶' : '❚❚'
+    const json = JSON.stringify(s)
+    if (json !== lastReport) { lastReport = json; notify(json) }
+  }
+
+  let reporting = 0
+  const startReplay = (t, paused) => {
+    unmount()
+    if (boot.events.length < 2) {
+      cur && cur.status === 'error' ? fail(cur.error || 'This recording could not be read') : say('No events recorded')
+      notify('finished'); return
+    }
+    document.body.classList.add('seekable')
+    replaying = true
+    followPlayhead = true
+    fit()
+    const r = new rrweb.Replayer(boot.events, { ...config, skipInactive: !isExport, speed: 1 })
+    mount(r)
+    // rrweb applies the events strictly before a seek point: 1ms past the last one shows it.
+    total = r.getMetaData().totalTime + 1
+    finished = false
+    setBadge('replay', 'REPLAY')
+    r.on('finish', () => { finished = true; setBadge('ended', 'END'); report(); notify('finished') })
+    paused ? r.pause(t) : r.play(t)
+    clearInterval(reporting)
+    reporting = setInterval(report, 250)
+    report()
+    window.__ready = true
+  }
+
+  scrub.oninput = () => ctl.seek((Number(scrub.value) / 1000) * total)
+  toggleButton.onclick = () => ctl.toggle()
+  $('back').onclick = () => ctl.seekBy(-10_000)
+  $('fwd').onclick = () => ctl.seekBy(10_000)
+  $('speed').onchange = e => ctl.speed(Number(e.target.value))
+  window.addEventListener('keydown', e => {
+    if (e.key === ' ') { e.preventDefault(); ctl.toggle() }
+    if (e.key === 'ArrowLeft') ctl.seekBy(-5000)
+    if (e.key === 'ArrowRight') ctl.seekBy(5000)
+  })
+
+  if (mode !== 'live') return startReplay(Number(params.get('t') || 0), params.get('paused') === '1' || isExport)
+
+  // ----------------------------------------------------------------- live
+  // Every event read so far, in order; the live Replayer is (re)built from the last snapshot.
+  let all = boot.events.slice()
+  let feedSeen = boot.feed.length
+  /** rrweb's live clock: events before `baseline` apply at once, later ones on schedule. */
+  const live = { baseline: 0, wall: 0 }
+  const liveClock = () => live.baseline + (Date.now() - live.wall)
+  const lastTs = () => (all.length ? all[all.length - 1].timestamp : 0)
+  const safeAdd = ev => { try { replayer.addEvent(ev) } catch {} }
+
+  /** A fresh live Replayer at the last snapshot, caught up to `baseline` instantly. */
+  const rebuild = baseline => {
+    const events = fromLastSnapshot(all)
+    if (!events.length) return false
+    unmount()
+    // No virtual DOM: events applied at once (history up to the baseline) would sit in it, unflushed,
+    // until a later scheduled event arrived, and a finished recording never gets one.
+    const r = new rrweb.Replayer([], { ...config, liveMode: true, useVirtualDom: false })
+    mount(r)
+    r.startLive(baseline)
+    live.baseline = baseline
+    live.wall = Date.now()
+    for (const ev of events) safeAdd(ev)
+    window.__ready = true
+    return true
+  }
+
+  /** New events at `from` (their index in the whole stream); ones already held are skipped. */
+  const ingest = (from, events) => {
+    const fresh = events.slice(Math.max(0, all.length - from))
+    if (!fresh.length) return
+    all.push(...fresh)
+    if (!replayer) {
+      // The stream is renderable once a Meta is followed by a FullSnapshot.
+      if (rebuild(lastTs() - 300)) return
+      return
+    }
+    // Reading history faster than it happened: jump to its head rather than replay it at 1×.
+    if (lastTs() - liveClock() > 4000) { rebuild(lastTs() - 300); return }
+    for (const ev of fresh) safeAdd(ev)
+  }
+
+  /** The stream is over: show the final frame at once. */
+  const finalize = () => {
+    if (all.length && !rebuild(lastTs() + 1) && !replayer) say(cur && cur.error ? cur.error : 'No frames were recorded')
+    setBadge('ended', cur && cur.status === 'error' ? 'ERROR' : 'ENDED')
+  }
+
+  const onFeed = items => { feedSeen += items.length; showFeed(items) }
+  let handledEnd = false
+  /** A live view in a browser becomes the scrubbable recording, parked at its end. */
+  const onEnded = async () => {
+    if (handledEnd) return
+    handledEnd = true
+    if (withChrome) {
+      boot = await loadEvents()
+      setRecording(boot.recording)
+      startReplay(0, true)
+      ctl.seek(total)
+    } else {
+      finalize()
+    }
+  }
+
+  // Seed from what is already there.
+  if (all.length) rebuild(lastTs() - 300)
+  if (!replayer) cur.status === 'error' ? fail(cur.error || 'This recording could not be read') : say('Waiting for the first frame…')
+
+  if (isTile) {
+    // Canvas tiles poll: a canvas holds many players and a browser allows ~6 open streams per host.
+    for (;;) {
+      const r = await (await fetch(api('/events', `from=${all.length}&feedFrom=${feedSeen}`))).json()
+      setRecording(r.recording)
+      ingest(r.from, r.events)
+      onFeed(r.feed)
+      if (r.recording.status === 'ended' || r.recording.status === 'error') {
+        // One last read: rows can land just as the status flips.
+        const last = await (await fetch(api('/events', `from=${all.length}&feedFrom=${feedSeen}`))).json()
+        ingest(last.from, last.events)
+        onFeed(last.feed)
+        setRecording(last.recording)
+        finalize()
+        return
+      }
+      await sleep(700)
+    }
+  }
+
+  // One viewer: push over SSE, with the status read now and then (live → ended is not pushed).
+  const stream = new EventSource(api('/stream'))
+  stream.addEventListener('events', m => { const { from, events } = JSON.parse(m.data); ingest(from, events) })
+  stream.addEventListener('feed', m => onFeed(JSON.parse(m.data)))
+  stream.addEventListener('status', m => {
+    const status = JSON.parse(m.data).status
+    if (status === 'ended' || status === 'error') { stream.close(); onEnded() }
+  })
+  const refresh = setInterval(async () => {
+    try {
+      const rec = await (await fetch(api(''))).json()
+      setRecording(rec)
+      if (rec.status === 'ended' || rec.status === 'error') { clearInterval(refresh); stream.close(); onEnded() }
+    } catch {}
+  }, 1500)
+})()
+</script>
+</body>
+</html>
