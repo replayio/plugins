@@ -1,0 +1,10 @@
+{
+  "name": "replay-qa-live",
+  "private": true,
+  "description": "Relay and pages for the Replay QA live views. Tests: npm test",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/stream.test.mjs test/relay.test.mjs",
+    "demo": "node test/serve-demo.mjs"
+  }
+}
