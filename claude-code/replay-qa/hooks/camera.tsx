@@ -4,7 +4,7 @@ import type { ClientKeyEvent, ClientPointerEvent, ClientSurface } from 'claude-c
 // Laid over the canvas picture in the pane, it turns the pointer and keys into camera moves for
 // the hooks module, which hands them to the relay's screencast: drag to pan, double-click a tile
 // to focus it (the background to fit), press or drag on the minimap to move the view there, and
-// once clicked + − 0 1 and the arrows. The wheel zooms through the pane's ui.scroll instead, as a
+// once clicked + − 0 1 and the arrows. The wheel pans through the pane's ui.scroll instead, as a
 // Client gets no wheel.
 //
 // Points and distances are posted as fractions of the picture, so nothing here knows pixels.
