@@ -8,6 +8,20 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; background: #101014; color: #d8d8de;
     font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  /* In a browser the grid sits on a pannable, zoomable surface; the terminal screencast (embed) keeps a fixed grid. */
+  body:not(.embed) { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  body:not(.embed) header#head { flex: none; }
+  #viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab;
+    background: #101014 radial-gradient(#23232b 1px, transparent 1px) 0 0 / 24px 24px; }
+  #viewport.panning { cursor: grabbing; }
+  #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #world.glide { transition: transform .22s ease-out; }
+  body.embed #viewport, body.embed #world { display: contents; }
+  .zoom { display: flex; align-items: center; gap: 2px; }
+  .zoom button { min-width: 30px; }
+  #zoomPct { min-width: 58px; font-variant-numeric: tabular-nums; }
+  body.embed .zoom, body.embed #hint { display: none; }
+  #hint { position: absolute; left: 12px; bottom: 10px; color: #5f5f6b; font-size: 12px; pointer-events: none; user-select: none; }
   body.embed { height: 100vh; overflow: hidden; display: flex; flex-direction: column; font-size: 17px; }
   header#head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px;
     border-bottom: 1px solid #23232b; position: sticky; top: 0; background: #101014; z-index: 5; }
@@ -27,7 +41,7 @@
   button.on { background: var(--accent); color: #fff; }
   #error { display: none; margin: 12px 20px 0; padding: 8px 12px; border-radius: 6px; background: rgba(160,24,48,.9); color: #fff; font: 12px ui-monospace, Menlo, monospace; }
   #error.on { display: block; }
-  main#grid { display: grid; gap: 14px; padding: 18px 20px 28px; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+  main#grid { display: grid; gap: 18px; padding: 24px; width: max-content; grid-template-columns: repeat(var(--wcols, 3), 520px); }
   body.embed main#grid { flex: 1; min-height: 0; padding: 12px 14px; gap: 12px;
     grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); }
   .tile { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #17171d; border: 1px solid #23232b; border-radius: 8px; overflow: hidden; }
@@ -46,7 +60,7 @@
   body.embed .note { font-size: 14px; }
   .body { position: relative; background: #0c0c10; aspect-ratio: 16 / 10; width: 100%; flex: none; }
   body.embed .body { aspect-ratio: auto; flex: 1; min-height: 0; }
-  .body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0c0c10; }
+  .body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0c0c10; pointer-events: none; }
   .poster { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
     padding: 12px 18px; text-align: center; color: #8a8a96; }
   .icon { font-size: 34px; line-height: 1; }
@@ -58,6 +72,7 @@
   body.embed .poster button { display: none; }
   @keyframes pulse { 50% { opacity: .35; } }
   .empty { padding: 40px 20px; color: #77777f; text-align: center; grid-column: 1 / -1; }
+  body:not(.embed) .tile { user-select: none; }
 </style>
 </head>
 <body>
@@ -70,10 +85,12 @@
     <button data-filter="all" class="on">All</button><button data-filter="live">Live</button>
     <button data-filter="bugs">Bugs</button><button data-filter="failed">Failed</button>
   </span>
+  <span class="zoom"><button id="zoomOut" title="Zoom out (−)">−</button><button id="zoomPct" title="Actual size (1)">100%</button><button id="zoomIn" title="Zoom in (+)">+</button><button id="zoomFit" title="Fit everything (0)">Fit</button></span>
   <span class="actions"><button id="follow" title="Stream any exploration or journey that starts running">Follow</button><button id="loadAll">Load all</button></span>
 </header>
 <div id="error"></div>
-<main id="grid"><div class="empty" id="placeholder">Loading project…</div></main>
+<div id="viewport"><div id="world"><main id="grid"><div class="empty" id="placeholder">Loading project…</div></main></div>
+  <div id="hint">Pinch or ⌘/Ctrl-scroll to zoom · scroll or drag to pan · double-click a tile to focus it</div></div>
 <script>
 (() => {
   const params = new URLSearchParams(location.search)
@@ -217,10 +234,15 @@
       const show = filter === 'all' || (filter === 'live' && t.isLive) || (filter === 'bugs' && t.status === 'bugs') || (filter === 'failed' && (t.status === 'failed' || t.status === 'infra'))
       view.el.classList.toggle('hidden', !show)
     }
+    layout()
   }
 
   function layout() {
-    if (!embed) return
+    if (!embed) {
+      const n = Math.max(1, [...views.values()].filter(v => !v.el.classList.contains('hidden')).length)
+      grid.style.setProperty('--wcols', Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * 1.6)))))
+      return
+    }
     const n = Math.max(1, Math.min(MAX_FRAMES, tiles.length))
     const cols = n === 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4
     document.documentElement.style.setProperty('--cols', cols)
@@ -330,6 +352,145 @@
     $('follow').textContent = following ? 'Following' : 'Follow'
     await post('/qa/follow', { projectId, on: following })
   })
+
+  // ------------------------------------------------------------- camera
+  // The browser view is a canvas: #world holds the grid at a fixed size and is moved by one transform.
+  // Players are pointer-events: none, so every gesture over them reaches the viewport.
+  const viewport = $('viewport')
+  const world = $('world')
+  const MIN_ZOOM = 0.08
+  const MAX_ZOOM = 4
+  const cam = { x: 0, y: 0, k: 1 }
+  /** Until the person moves the camera it keeps everything in view as tiles come and go. */
+  let autoFit = true
+
+  const clampZoom = k => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k))
+  function apply(glide = false) {
+    world.classList.toggle('glide', glide)
+    world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.k})`
+    viewport.style.backgroundSize = `${24 * cam.k}px ${24 * cam.k}px`
+    viewport.style.backgroundPosition = `${cam.x}px ${cam.y}px`
+    $('zoomPct').textContent = `${Math.round(cam.k * 100)}%`
+  }
+  /** Zoom by `factor`, keeping the viewport point (px, py) still. */
+  function zoomAt(factor, px, py, glide = false) {
+    const k = clampZoom(cam.k * factor)
+    cam.x = px - (px - cam.x) * (k / cam.k)
+    cam.y = py - (py - cam.y) * (k / cam.k)
+    cam.k = k
+    apply(glide)
+  }
+  /** Fit a world-space rectangle in the viewport, never above `maxK`. */
+  function frame(x, y, w, h, maxK, glide) {
+    const vw = viewport.clientWidth
+    const vh = viewport.clientHeight
+    if (!vw || !vh || !w || !h) return
+    const pad = 24
+    cam.k = clampZoom(Math.min((vw - pad * 2) / w, (vh - pad * 2) / h, maxK))
+    cam.x = (vw - w * cam.k) / 2 - x * cam.k
+    cam.y = (vh - h * cam.k) / 2 - y * cam.k
+    apply(glide)
+  }
+  const fitAll = (glide = false) => frame(0, 0, grid.offsetWidth, grid.offsetHeight, 1, glide)
+  const center = () => [viewport.clientWidth / 2, viewport.clientHeight / 2]
+  const moved = () => { autoFit = false }
+
+  if (!embed) {
+    $('zoomIn').addEventListener('click', () => { moved(); zoomAt(1.25, ...center(), true) })
+    $('zoomOut').addEventListener('click', () => { moved(); zoomAt(0.8, ...center(), true) })
+    $('zoomPct').addEventListener('click', () => { moved(); zoomAt(1 / cam.k, ...center(), true) })
+    $('zoomFit').addEventListener('click', () => { autoFit = true; fitAll(true) })
+    new ResizeObserver(() => { if (autoFit) fitAll() }).observe(grid)
+    new ResizeObserver(() => { if (autoFit) fitAll() }).observe(viewport)
+
+    const local = e => { const r = viewport.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] }
+
+    // Trackpad pinch and Ctrl/⌘-scroll arrive as wheel events with ctrlKey; a plain scroll pans.
+    viewport.addEventListener('wheel', e => {
+      e.preventDefault()
+      moved()
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? viewport.clientHeight : 1
+      if (e.ctrlKey || e.metaKey) {
+        const dy = Math.max(-60, Math.min(60, e.deltaY * unit))
+        zoomAt(Math.exp(-dy * 0.01), ...local(e))
+      } else {
+        cam.x -= (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * unit
+        cam.y -= (e.shiftKey && !e.deltaX ? 0 : e.deltaY) * unit
+        apply()
+      }
+    }, { passive: false })
+
+    // Safari reports a trackpad pinch as gesture events instead.
+    let gestureK = 1
+    viewport.addEventListener('gesturestart', e => { e.preventDefault(); gestureK = cam.k })
+    viewport.addEventListener('gesturechange', e => {
+      e.preventDefault()
+      moved()
+      zoomAt(gestureK * e.scale / cam.k, ...local(e))
+    })
+    viewport.addEventListener('gestureend', e => e.preventDefault())
+
+    // Drag with one pointer to pan; pinch with two (touch screens) to zoom and pan together.
+    const pointers = new Map()
+    let last = null
+    const pinchState = () => {
+      const [a, b] = [...pointers.values()]
+      return { mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2, d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1 }
+    }
+    viewport.addEventListener('pointerdown', e => {
+      if (e.button > 1 || e.target.closest('button, a')) return
+      viewport.setPointerCapture(e.pointerId)
+      pointers.set(e.pointerId, local(e))
+      last = pointers.size === 2 ? pinchState() : null
+      viewport.classList.add('panning')
+    })
+    viewport.addEventListener('pointermove', e => {
+      const prev = pointers.get(e.pointerId)
+      if (!prev) return
+      const p = local(e)
+      pointers.set(e.pointerId, p)
+      moved()
+      if (pointers.size === 1) {
+        cam.x += p[0] - prev[0]
+        cam.y += p[1] - prev[1]
+        apply()
+      } else if (pointers.size === 2 && last) {
+        const now = pinchState()
+        cam.x += now.mx - last.mx
+        cam.y += now.my - last.my
+        zoomAt(now.d / last.d, now.mx, now.my)
+        last = now
+      }
+    })
+    const lift = e => {
+      pointers.delete(e.pointerId)
+      last = pointers.size === 2 ? pinchState() : null
+      if (!pointers.size) viewport.classList.remove('panning')
+    }
+    viewport.addEventListener('pointerup', lift)
+    viewport.addEventListener('pointercancel', lift)
+
+    // Double-click a tile to bring it up close; double-click the background to see everything.
+    viewport.addEventListener('dblclick', e => {
+      if (e.target.closest('button, a')) return
+      const el = e.target.closest('.tile')
+      if (!el) { autoFit = true; fitAll(true); return }
+      moved()
+      frame(el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight, MAX_ZOOM, true)
+    })
+
+    window.addEventListener('keydown', e => {
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        // Keep ⌘/Ctrl +/−/0 on the canvas rather than zooming the whole page.
+        if (!['=', '+', '-', '0'].includes(e.key)) return
+        e.preventDefault()
+      }
+      if (e.key === '=' || e.key === '+') { moved(); zoomAt(1.25, ...center(), true) }
+      else if (e.key === '-' || e.key === '_') { moved(); zoomAt(0.8, ...center(), true) }
+      else if (e.key === '0') { autoFit = true; fitAll(true) }
+      else if (e.key === '1') { moved(); zoomAt(1 / cam.k, ...center(), true) }
+    })
+  }
 
   // --------------------------------------------------------------- poll
   async function refresh() {
