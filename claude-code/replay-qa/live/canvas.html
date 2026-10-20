@@ -4,30 +4,29 @@
 <meta charset="utf-8">
 <title>Replay QA canvas</title>
 <style>
-  :root { color-scheme: dark; --accent: #F02D5E; --cols: 3; --rows: 3; }
+  :root { color-scheme: dark; --accent: #F02D5E; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: #101014; color: #d8d8de;
     font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-  /* In a browser the grid sits on a pannable, zoomable surface; the terminal screencast (embed) keeps a fixed grid. */
-  body:not(.embed) { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-  body:not(.embed) header#head { flex: none; }
+  /* The grid sits on a pannable, zoomable surface: driven by the pointer in a browser, by the
+     terminal through window.__canvas in the screencast (embed). */
+  body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  header#head { flex: none; }
   #viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab;
     background: #101014 radial-gradient(#23232b 1px, transparent 1px) 0 0 / 24px 24px; }
   #viewport.panning { cursor: grabbing; }
   #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
   #world.glide { transition: transform .22s ease-out; }
-  body.embed #viewport, body.embed #world { display: contents; }
   .zoom { display: flex; align-items: center; gap: 2px; }
   .zoom button { min-width: 30px; }
   #zoomPct { min-width: 58px; font-variant-numeric: tabular-nums; }
-  body.embed .zoom, body.embed #hint { display: none; }
   #hint { position: absolute; left: 12px; bottom: 10px; color: #5f5f6b; font-size: 12px; pointer-events: none; user-select: none; }
-  body.embed { height: 100vh; overflow: hidden; display: flex; flex-direction: column; font-size: 17px; }
+  /* In the terminal the picture is the canvas alone: the pane draws the project header and the hint. */
+  body.embed header#head, body.embed #hint { display: none; }
+  body.embed { font-size: 17px; }
   header#head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px;
     border-bottom: 1px solid #23232b; position: sticky; top: 0; background: #101014; z-index: 5; }
-  body.embed header#head { position: static; padding: 10px 18px; flex: none; flex-wrap: nowrap; }
   .proj { font-size: 17px; font-weight: 700; }
-  body.embed .proj { font-size: 22px; }
   .live-count { color: var(--accent); font-weight: 600; display: none; }
   .live-count.on { display: inline; }
   .live-count i, .dot.live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; margin-right: 6px; }
@@ -37,15 +36,12 @@
   .server.on { display: inline; }
   .spacer { flex: 1; }
   .chips, .actions { display: flex; gap: 6px; }
-  body.embed .chips, body.embed .actions { display: none; }
   button { background: #2a2a33; color: #ddd; border: 0; border-radius: 4px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 13px; }
   button:hover { background: #363642; }
   button.on { background: var(--accent); color: #fff; }
   #error { display: none; margin: 12px 20px 0; padding: 8px 12px; border-radius: 6px; background: rgba(160,24,48,.9); color: #fff; font: 12px ui-monospace, Menlo, monospace; }
   #error.on { display: block; }
   main#grid { display: grid; gap: 18px; padding: 24px; width: max-content; grid-template-columns: repeat(var(--wcols, 3), 520px); }
-  body.embed main#grid { flex: 1; min-height: 0; padding: 12px 14px; gap: 12px;
-    grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); }
   .tile { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #17171d; border: 1px solid #23232b; border-radius: 8px; overflow: hidden; }
   .tile.hidden { display: none; }
   .tile.is-live { border-color: rgba(240,45,94,.55); }
@@ -61,7 +57,6 @@
   .note { padding: 0 10px 6px 27px; color: #9a9aa6; font-size: 12px; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   body.embed .note { font-size: 14px; }
   .body { position: relative; background: #0c0c10; aspect-ratio: 16 / 10; width: 100%; flex: none; }
-  body.embed .body { aspect-ratio: auto; flex: 1; min-height: 0; }
   .body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0c0c10; pointer-events: none; }
   .poster { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
     padding: 12px 18px; text-align: center; color: #8a8a96; }
@@ -191,7 +186,8 @@
     } else {
       poster.append(text('div', `icon ${tile.status}`, icon), text('div', 'why', tile.status === 'never-run' ? 'This journey has not run yet' : label + (tile.reason ? ` · ${tile.reason}` : '')))
       for (const t of tile.bugTitles.slice(0, 2)) poster.append(text('div', 'bugtitle', t))
-      if (tile.recordingId) {
+      if (tile.recordingId && embed) poster.append(text('div', 'why', 'Double-click to load'))
+      else if (tile.recordingId) {
         const load = text('button', '', 'Load recording')
         load.addEventListener('click', () => enqueue(tile.key, true))
         poster.append(load)
@@ -202,7 +198,7 @@
 
   /** Create, update, drop and place tiles from an overview; existing nodes (and their iframes) are never moved. */
   function reconcile(data) {
-    const visible = embed ? data.tiles.slice(0, MAX_FRAMES) : data.tiles
+    const visible = data.tiles
     tiles = visible
     const keys = new Set(visible.map(t => t.key))
     for (const [key, view] of views) {
@@ -241,15 +237,8 @@
   }
 
   function layout() {
-    if (!embed) {
-      const n = Math.max(1, [...views.values()].filter(v => !v.el.classList.contains('hidden')).length)
-      grid.style.setProperty('--wcols', Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * 1.6)))))
-      return
-    }
-    const n = Math.max(1, Math.min(MAX_FRAMES, tiles.length))
-    const cols = n === 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4
-    document.documentElement.style.setProperty('--cols', cols)
-    document.documentElement.style.setProperty('--rows', Math.ceil(n / cols))
+    const n = Math.max(1, [...views.values()].filter(v => !v.el.classList.contains('hidden')).length)
+    grid.style.setProperty('--wcols', Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * 1.6)))))
   }
 
   // ------------------------------------------------------------ loading
@@ -316,7 +305,8 @@
     if (!seeded && tiles.length) {
       seeded = true
       const finished = tiles.filter(t => !t.isLive && t.recordingId)
-      for (const t of embed ? finished : finished.slice(0, AUTO_FINISHED)) enqueue(t.key)
+      // The rest load when focused (double-click), so frames are not spent on tiles nobody looks at.
+      for (const t of finished.slice(0, embed ? MAX_FRAMES : AUTO_FINISHED)) enqueue(t.key)
     }
   }
 
@@ -399,14 +389,40 @@
   const fitAll = (glide = false) => frame(0, 0, grid.offsetWidth, grid.offsetHeight, 1, glide)
   const center = () => [viewport.clientWidth / 2, viewport.clientHeight / 2]
   const moved = () => { autoFit = false }
+  /** Bring a tile up close, loading its recording if it shows a poster. */
+  function focusTile(el) {
+    moved()
+    frame(el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight, MAX_ZOOM, true)
+    const view = [...views.values()].find(v => v.el === el)
+    if (view && view.state === 'idle') enqueue(view.tile.key, true)
+    return view?.tile.title ?? null
+  }
+
+  new ResizeObserver(() => { if (autoFit) fitAll() }).observe(grid)
+  new ResizeObserver(() => { if (autoFit) fitAll() }).observe(viewport)
+
+  // The terminal's camera (the relay evaluates these in the screencast): points and distances are
+  // fractions of the viewport, so the caller needs no pixels.
+  window.__canvas = {
+    zoom(factor, fx = 0.5, fy = 0.5) { moved(); zoomAt(factor, fx * viewport.clientWidth, fy * viewport.clientHeight); return cam.k },
+    pan(dx, dy) { moved(); cam.x += dx * viewport.clientWidth; cam.y += dy * viewport.clientHeight; apply(); return cam.k },
+    focus(fx, fy) {
+      const r = viewport.getBoundingClientRect()
+      const el = document.elementFromPoint(r.left + fx * r.width, r.top + fy * r.height)?.closest('.tile')
+      if (el) return focusTile(el)
+      autoFit = true
+      fitAll(true)
+      return null
+    },
+    fit() { autoFit = true; fitAll(true); return cam.k },
+    actual() { moved(); zoomAt(1 / cam.k, ...center(), true); return cam.k },
+  }
 
   if (!embed) {
     $('zoomIn').addEventListener('click', () => { moved(); zoomAt(1.25, ...center(), true) })
     $('zoomOut').addEventListener('click', () => { moved(); zoomAt(0.8, ...center(), true) })
     $('zoomPct').addEventListener('click', () => { moved(); zoomAt(1 / cam.k, ...center(), true) })
     $('zoomFit').addEventListener('click', () => { autoFit = true; fitAll(true) })
-    new ResizeObserver(() => { if (autoFit) fitAll() }).observe(grid)
-    new ResizeObserver(() => { if (autoFit) fitAll() }).observe(viewport)
 
     const local = e => { const r = viewport.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] }
 
@@ -480,8 +496,7 @@
       if (e.target.closest('button, a')) return
       const el = e.target.closest('.tile')
       if (!el) { autoFit = true; fitAll(true); return }
-      moved()
-      frame(el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight, MAX_ZOOM, true)
+      focusTile(el)
     })
 
     window.addEventListener('keydown', e => {

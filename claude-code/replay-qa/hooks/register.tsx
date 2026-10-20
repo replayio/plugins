@@ -117,6 +117,13 @@ const state = {
   /** Recordings that ended while their screencast was live, parked at the end. */
   parked: new Set<string>(),
   canvasProjectId: null as string | null,
+  /** Where the canvas picture sits in the pane body, for the wheel; the screencast size last asked for. */
+  canvasPicture: null as { top: number; columns: number; rows: number } | null,
+  canvasAsked: null as { width: number; height: number } | null,
+  /** The drag being applied to the canvas camera: its id and how far it has moved it so far. */
+  cameraDrag: null as { id: number; dx: number; dy: number } | null,
+  /** Camera moves go to the relay one after another, in order. */
+  cameraQueue: Promise.resolve() as Promise<unknown>,
   statusLine: undefined as string | undefined,
 }
 
@@ -388,8 +395,39 @@ async function showCanvas($: EngineInterface, projectId: string, server?: string
 async function hideCanvas($: EngineInterface): Promise<void> {
   const projectId = state.canvasProjectId
   state.canvasProjectId = null
+  state.canvasPicture = null
+  state.canvasAsked = null
   if (projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false }).catch(() => {})
 }
+
+type CameraMove =
+  | { op: 'zoom'; factor: number; x?: number; y?: number }
+  | { op: 'pan'; dx: number; dy: number }
+  | { op: 'focus'; x: number; y: number }
+  | { op: 'fit' }
+  | { op: 'actual' }
+
+/** Moves the canvas screencast's camera; points and distances are fractions of the picture. */
+function moveCamera($: EngineInterface, move: CameraMove): void {
+  const projectId = state.canvasProjectId
+  if (!projectId) return
+  state.cameraQueue = state.cameraQueue
+    .then(() => relayJson($, `/canvas/${encodeURIComponent(projectId)}/camera`, move))
+    .catch(err => $.ui.log(`replay-qa: canvas camera: ${message(err)}`))
+}
+
+/** The screencast takes the pane picture's shape: asked again when it changes by more than a little. */
+function sizeCanvas($: EngineInterface, projectId: string, columns: number, rows: number): void {
+  const width = 1600
+  const height = Math.round((width * rows * CELL_ASPECT) / columns)
+  const asked = state.canvasAsked
+  if (asked && Math.abs(asked.height - height) / asked.height < 0.04) return
+  state.canvasAsked = { width, height }
+  void relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width, height })
+    .catch(err => $.ui.log(`replay-qa: canvas resize: ${message(err)}`))
+}
+
+const fraction = (v: unknown, lo = 0, hi = 1) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null)
 
 // ---------------------------------------------------------------- watchers
 
@@ -506,8 +544,9 @@ export const register: Register = on => {
     }
     try {
       state.relay = await startRelay($)
-      void watchFrames($)
-      void watchOverviews($)
+      // They end with the session: a wait the unloading engine aborts is not an error.
+      void watchFrames($).catch(() => {})
+      void watchOverviews($).catch(() => {})
     } catch (err) {
       state.relayError = message(err)
       $.ui.log(`replay-qa: live relay did not start: ${state.relayError}`)
@@ -562,12 +601,46 @@ export const register: Register = on => {
     }
   })
 
+  // What the Clients post: the canvas camera layer (drags, double-clicks and keys over the picture), and
+  // a player row's seek bar. Validated: it is client input.
   on('ui.message', async ($, e, next) => {
-    const row = state.rows.get(e.requestId)
-    if (e.module !== './scrubber.tsx' || !row) return next(e)
-    const data = e.data as { type?: string; ms?: number }
-    if (data.type === 'seek' || data.type === 'seekBy' || data.type === 'toggle') await play($, row.recordingId, data.type, data.ms)
+    // `e.module` is the path under the plugin's folder (`hooks/camera.tsx`); the `./` form is the Client's own.
+    const module = e.module.replace(/^(?:\.\/|hooks\/)/, '')
+    if (module === 'scrubber.tsx') {
+      const row = state.rows.get(e.requestId)
+      const data = e.data as { type?: string; ms?: number }
+      if (row && (data.type === 'seek' || data.type === 'seekBy' || data.type === 'toggle')) await play($, row.recordingId, data.type, data.ms)
+      return next(e)
+    }
+    if (module !== 'camera.tsx' || e.requestId !== PANE) return next(e)
+    const data = (e.data ?? {}) as Record<string, unknown>
+    if (data.type === 'drag' && typeof data.id === 'number') {
+      const dx = fraction(data.dx, -4, 4) ?? 0
+      const dy = fraction(data.dy, -4, 4) ?? 0
+      const prev = state.cameraDrag?.id === data.id ? state.cameraDrag : { id: data.id, dx: 0, dy: 0 }
+      state.cameraDrag = { id: data.id, dx, dy }
+      if (dx !== prev.dx || dy !== prev.dy) moveCamera($, { op: 'pan', dx: dx - prev.dx, dy: dy - prev.dy })
+    } else if (data.type === 'focus') {
+      moveCamera($, { op: 'focus', x: fraction(data.x) ?? 0.5, y: fraction(data.y) ?? 0.5 })
+    } else if (data.type === 'zoom') {
+      moveCamera($, { op: 'zoom', factor: fraction(data.factor, 0.5, 2) ?? 1 })
+    } else if (data.type === 'pan') {
+      moveCamera($, { op: 'pan', dx: fraction(data.dx, -1, 1) ?? 0, dy: fraction(data.dy, -1, 1) ?? 0 })
+    } else if (data.type === 'fit' || data.type === 'actual') {
+      moveCamera($, { op: data.type })
+    }
     return next(e)
+  })
+
+  // The wheel over the canvas picture zooms around the pointer; elsewhere the pane scrolls as usual.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const picture = state.canvasPicture
+    const p = e.pointer
+    if (!picture || !p || e.origin.kind !== 'person') return next(e)
+    const row = p.row - picture.top
+    if (row < 0 || row >= picture.rows || p.column < 0 || p.column >= picture.columns) return next(e)
+    moveCamera($, { op: 'zoom', factor: Math.pow(1.15, -Math.max(-6, Math.min(6, e.by))), x: (p.column + 0.5) / picture.columns, y: (row + 0.5) / picture.rows })
+    return { deny: 'the canvas zoomed instead' }
   })
 
   // The result of a Replay QA script run from Bash.
@@ -731,24 +804,21 @@ export const register: Register = on => {
     const overview = state.overviews.get(projectId)
     const frame = state.frames[canvasFrameId(projectId)]
     const bodyRows = e.props.scroll.bodyRows > 0 ? e.props.scroll.bodyRows : Math.max(8, (e.viewport?.rows ?? 30) - 8)
-    let columns = Math.max(20, Math.min(MAX_CELLS, e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 100)))
-    let rows = Math.max(6, Math.round((columns * 9) / 16 / CELL_ASPECT))
-    // A short pane shrinks the picture, keeping its 16:9 shape.
-    const room = Math.max(6, bodyRows - 3)
-    if (rows > room) {
-      rows = room
-      columns = Math.max(20, Math.round((rows * CELL_ASPECT * 16) / 9))
-    }
+    // The picture is the canvas, filling the pane between the header line and the footer line;
+    // the screencast is asked for that shape, so nothing is letterboxed.
+    const columns = Math.max(20, Math.min(MAX_CELLS, e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 100)))
+    const rows = Math.max(6, bodyRows - 2)
     const width = frame?.width ?? 1600
     const height = frame?.height ?? 900
 
     const name = overview?.project?.name ?? projectId
     const counts = overview?.counts
+    const server = overview?.server ? new URL(overview.server).host : null
     const header = (
-      <Box flexDirection="row" gap={2} flexWrap="wrap">
-        <Text bold>{name}</Text>
+      <Box flexDirection="row" gap={2} height={1} overflow="hidden">
+        <Text bold wrap="truncate-end">{name}</Text>
         <Text color={counts && counts.live > 0 ? '#F02D5E' : undefined} dimColor={!counts || counts.live === 0}>● {counts?.live ?? 0} live</Text>
-        <Text dimColor>{counts?.journeys ?? 0} journeys · {counts?.bugs ?? 0} with bugs · {counts?.failed ?? 0} failed</Text>
+        <Text dimColor wrap="truncate-end">{counts?.journeys ?? 0} journeys · {counts?.bugs ?? 0} with bugs · {counts?.failed ?? 0} failed{server ? ` · ${server}` : ''}</Text>
       </Box>
     )
     const picture = e.surface !== 'terminal'
@@ -756,18 +826,29 @@ export const register: Register = on => {
       : frame && frame.generation > 0
         ? (() => {
             state.mounted.set(PANE, { columns, rows, width, height })
-            const { Image } = $.ui.resolve(e)
-            return <Image key={CANVAS_KEY} source={imageSource(frame)} columns={columns} rows={rows} alt={`Replay QA canvas for ${name}`} />
+            state.canvasPicture = { top: 1, columns, rows }
+            sizeCanvas($, projectId, columns, rows)
+            const { Image, Client } = $.ui.resolve(e)
+            return (
+              <Box key="stage" width={columns} height={rows}>
+                <Image key={CANVAS_KEY} source={imageSource(frame)} columns={columns} rows={rows} alt={`Replay QA canvas for ${name}`} />
+                <Box position="absolute" top={0} left={0} width={columns} height={rows}>
+                  <Client key="camera" module="./camera.tsx" width={columns} height={rows} />
+                </Box>
+              </Box>
+            )
           })()
         : <Text dimColor>{overview?.error ? `⚠ ${overview.error}` : 'Loading the canvas…'}</Text>
     return (
       <Box flexDirection="column">
         {header}
         {picture}
-        {overview?.error && frame && frame.generation > 0 ? <Text color="red" wrap="wrap">⚠ {overview.error}</Text> : null}
-        <Box flexDirection="row" gap={1}>
+        <Box flexDirection="row" gap={1} height={1} overflow="hidden">
           <Button key="open" label="Open in browser" onPress={() => openUrl($, canvasPage(projectId))} />
           <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
+          {overview?.error && frame && frame.generation > 0
+            ? <Text color="red" wrap="truncate-end">⚠ {overview.error}</Text>
+            : <Text dimColor wrap="truncate-end">scroll to zoom · drag to pan · double-click a tile · click, then + − 0 1 ←↑→↓</Text>}
         </Box>
       </Box>
     )

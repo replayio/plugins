@@ -775,12 +775,27 @@ async function startPlayer(id, mode, { t = 0, paused = false } = {}) {
 
 const canvasViewId = projectId => `canvas-${safeId(projectId)}`
 
-/** Screencasts the canvas page: every journey of the project as rrweb players, as one picture. */
+/**
+ * Screencasts the canvas page: every journey of the project as rrweb players, as one picture.
+ * One already on screen is resized in place (the pane changed shape), its players kept.
+ */
 async function startCanvasView(projectId, { width = CANVAS_W, height = CANVAS_H } = {}) {
-  const w = Math.max(640, Math.min(2400, Number(width) || CANVAS_W))
-  const h = Math.max(360, Math.min(1600, Number(height) || CANVAS_H))
+  const w = Math.max(640, Math.min(2400, Math.round(Number(width) || CANVAS_W)))
+  const h = Math.max(240, Math.min(1600, Math.round(Number(height) || CANVAS_H)))
+  const id = canvasViewId(projectId)
+  const player = players.get(id)
+  const f = frames.get(id)
+  if (player?.sessionId && f) {
+    if (f.width === w && f.height === h) return
+    await chrome.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false }, player.sessionId)
+    await chrome.send('Page.stopScreencast', {}, player.sessionId).catch(() => {})
+    await chrome.send('Page.startScreencast', { format: 'png', everyNthFrame: 1, maxWidth: w, maxHeight: h }, player.sessionId)
+    Object.assign(f, { width: w, height: h, seq: (f.seq ?? 0) + 1 })
+    bump(id)
+    return
+  }
   const url = `${base()}/canvas/${encodeURIComponent(projectId)}?embed=1&token=${TOKEN}`
-  await startView(canvasViewId(projectId), url, w, h, { kind: 'canvas', mode: 'canvas' })
+  await startView(id, url, w, h, { kind: 'canvas', mode: 'canvas' })
 }
 
 /** Stops the view for `id`; with `only`, just when that one is still current. */
@@ -944,6 +959,26 @@ const server = http.createServer(async (req, res) => {
       if (on) await startCanvasView(parts[1], { width, height })
       else await stopPlayer(id)
       return send(res, 200, framesSnapshot().frames[id] ?? null)
+    }
+
+    // POST /canvas/:project/camera { op: zoom|pan|focus|fit|actual, factor?, x?, y?, dx?, dy? } -> move the
+    // screencast canvas's camera; points and distances are fractions of the picture
+    if (req.method === 'POST' && parts[0] === 'canvas' && parts[1] && parts[2] === 'camera') {
+      const player = players.get(canvasViewId(parts[1]))
+      if (!player?.sessionId) return send(res, 409, { error: 'the canvas is not on screen' })
+      const { op, factor, x, y, dx, dy } = await readJson(req)
+      const n = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback)
+      const args = {
+        zoom: [n(factor, 0.1, 10, 1), n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
+        pan: [n(dx, -10, 10, 0), n(dy, -10, 10, 0)],
+        focus: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
+        fit: [],
+        actual: [],
+      }[op]
+      if (!args) return send(res, 400, { error: `unknown camera op ${op}` })
+      player.touched = Date.now()
+      const result = await evaluate(player.sessionId, `window.__canvas ? window.__canvas.${op}(${args.map(a => JSON.stringify(a)).join(', ')}) : null`)
+      return send(res, 200, { result })
     }
 
     // GET /player/:id and /canvas/:project -> the pages the screencast (or a person) loads
