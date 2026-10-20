@@ -81,7 +81,7 @@ async function openCanvas($: Parameters<Test>[0], on: Parameters<Test>[1]) {
 
 test('the pane is the canvas: the picture fills it and the screencast takes its shape', async ($, on) => {
   const { ui, views } = await openCanvas($, on)
-  expect(await ui.find({ type: 'Text', text: /scroll or drag to pan/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /scroll to zoom/ })).toBeTruthy()
   // 80 x 22 cells at about 2.1 cells tall per cell wide: the screencast is asked for that shape.
   const resized = views.find(v => v.width === 1600 && v.height !== 900)
   expect(resized?.height).toBe(Math.round((1600 * 22 * 2.1) / 80))
@@ -119,16 +119,15 @@ test('a double-click focuses the tile under it; keys zoom and fit', async ($, on
   await ui.unmount()
 })
 
-test('two-finger scroll over the picture pans the canvas instead of scrolling the pane', async ($, on) => {
+test('the wheel over the picture zooms around the pointer instead of scrolling the pane', async ($, on) => {
   const { ui, clock, moves } = await openCanvas($, on)
   const scrolled = await $.ui.scroll({
-    component: 'Pane', requestId: 'replay-qa-canvas', offset: 0, by: 3, bodyRows: 24, contentRows: 24,
+    component: 'Pane', requestId: 'replay-qa-canvas', offset: 0, by: -1, bodyRows: 24, contentRows: 24,
     origin: { kind: 'person' }, pointer: { column: 40, row: 12 },
   } as never)
   await clock.settle()
   expect(scrolled?.deny).toBeTruthy()
-  // Scrolling down three ticks moves the canvas up two rows a tick.
-  expect(moves()).toEqual([{ op: 'pan', dx: 0, dy: -6 / 22 }])
+  expect(moves()).toEqual([{ op: 'zoom', factor: 1.15, x: 40.5 / 80, y: 11.5 / 22 }])
   await ui.unmount()
 })
 

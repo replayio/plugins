@@ -5,7 +5,7 @@ import type { ClientKeyEvent, ClientPointerEvent, ClientSurface } from 'claude-c
 // the hooks module, which hands them to the relay's screencast: a press or drag is a gesture the
 // page decides from where it began (a tile's timeline scrubs, its ▶ and Live buttons press, anywhere
 // else pans), double-click a tile to focus it (the background to fit), press or drag on the minimap
-// to move the view there, and once clicked + − 0 1 and the arrows. The wheel pans through the pane's ui.scroll instead, as a
+// to move the view there, and once clicked + − 0 1 and the arrows. The wheel zooms through the pane's ui.scroll instead, as a
 // Client gets no wheel.
 //
 // Points and distances are posted as fractions of the picture, so nothing here knows pixels.

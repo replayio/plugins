@@ -156,6 +156,7 @@ test('draws a finished run\'s last frame once, as the thumbnail the canvas shows
   }, 60_000)
   if (done.data.status === 'error' && /chrom|browser|executable/i.test(done.data.error ?? '')) return t.skip(`no renderer: ${done.data.error}`)
   assert.equal(done.data.status, 'ready', done.data.error ?? '')
+  assert.ok(done.data.durationMs > 0, 'the recording\'s length comes with it')
   const png = await fetch(`http://127.0.0.1:${relay.info.port}${done.data.url}?token=${relay.info.token}`)
   assert.equal(png.headers.get('content-type'), 'image/png')
   const bytes = Buffer.from(await png.arrayBuffer())

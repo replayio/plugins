@@ -78,7 +78,8 @@
   .poster.on-thumb .icon { font-size: 16px; }
   /* A loaded tile's playback: play/pause, a timeline to press or drag, the time, and Live while scrubbing a running one. */
   .tctl { display: none; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid #23232b; user-select: none; }
-  .tile.has-player .tctl { display: flex; }
+  .tile.has-recording .tctl { display: flex; }
+  .tctl.waiting .tplay { opacity: .6; }
   .tctl button { padding: 3px 9px; min-width: 32px; }
   .tctl .track { position: relative; flex: 1; height: 20px; cursor: pointer; touch-action: none; }
   .tctl .track::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 4px; border-radius: 2px; background: #2f2f39; }
@@ -104,7 +105,7 @@
     <button data-filter="bugs">Bugs</button><button data-filter="failed">Failed</button>
   </span>
   <span class="zoom"><button id="zoomOut" title="Zoom out (−)">−</button><button id="zoomPct" title="Actual size (1)">100%</button><button id="zoomIn" title="Zoom in (+)">+</button><button id="zoomFit" title="Fit everything (0)">Fit</button></span>
-  <span class="actions"><button id="follow" title="Stream any exploration or journey that starts running">Follow</button><button id="loadAll">Load all</button></span>
+  <span class="actions"><button id="follow" title="Stream any exploration or journey that starts running">Follow</button></span>
 </header>
 <div id="error"></div>
 <div id="viewport"><div id="world"><main id="grid"><div class="empty" id="placeholder">Loading project…</div></main></div>
@@ -118,7 +119,6 @@
   const embed = params.get('embed') === '1'
   const MAX_FRAMES = 12      // iframes alive at once
   const MAX_FINISHED_LOADING = 3  // finished runs read from the API at once (each is tens of pages)
-  const AUTO_FINISHED = 4    // finished tiles that load without a click
   if (embed) document.body.classList.add('embed')
 
   const q = (extra = '') => `${extra ? extra + '&' : ''}token=${encodeURIComponent(token)}`
@@ -133,7 +133,6 @@
   let following = params.get('follow') !== '0'
   let filter = 'all'
   let tiles = []
-  let seeded = false
   let lastOverview = null
 
   const fmtDuration = s => (s == null ? '' : s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`)
@@ -164,7 +163,7 @@
     tctl.append(play, track, time, golive)
     el.append(head, note, body, tctl)
     const view = { el, parts: { dot, title, meta, note, body, ctl: { tctl, play, track, fill, knob, time } }, tile, state: 'idle', error: null, iframe: null, loadedAt: 0 }
-    play.addEventListener('click', () => { ctlOf(view)?.playPause(); syncControls(view) })
+    play.addEventListener('click', () => pressPlay(view))
     golive.addEventListener('click', () => { ctlOf(view)?.follow(); syncControls(view) })
     // Press or drag on the timeline: the tile shows that moment.
     let scrubPointer = null
@@ -203,7 +202,6 @@
     if (loaded?.status === 'error' && view.state === 'loaded') {
       view.iframe?.remove()
       view.iframe = null
-      view.el.classList.remove('has-player')
       view.state = 'error'
       view.error = loaded.error
     }
@@ -217,8 +215,8 @@
     body.replaceChildren()
     const poster = text('div', 'poster')
     const thumb = thumbs.get(tile.key)
-    if (view.state === 'idle' && thumb?.status === 'ready' && !tile.isLive) {
-      // The run's last frame, with its status on a badge; the recording loads on a double-click or the button.
+    if ((view.state === 'idle' || view.state === 'starting') && thumb?.status === 'ready' && !tile.isLive) {
+      // The run's last frame, with its status on a badge; the playback controls below load the recording.
       if (!view.parts.thumb) {
         const img = Object.assign(document.createElement('img'), { className: 'thumb', alt: '' })
         // The tile takes the run's own shape.
@@ -228,12 +226,6 @@
       }
       poster.classList.add('on-thumb')
       poster.append(text('div', `icon ${tile.status}`, icon), text('div', 'why', tile.bugTitles[0] ?? label))
-      if (tile.recordingId && embed) poster.append(text('div', 'why', '· double-click to play'))
-      else if (tile.recordingId) {
-        const load = text('button', '', 'Play')
-        load.addEventListener('click', () => enqueue(tile.key, true))
-        poster.append(load)
-      }
       body.append(view.parts.thumb, poster)
       return
     }
@@ -247,12 +239,6 @@
     } else {
       poster.append(text('div', `icon ${tile.status}`, icon), text('div', 'why', tile.status === 'never-run' ? 'This journey has not run yet' : label + (tile.reason ? ` · ${tile.reason}` : '')))
       for (const t of tile.bugTitles.slice(0, 2)) poster.append(text('div', 'bugtitle', t))
-      if (tile.recordingId && embed) poster.append(text('div', 'why', 'Double-click to load'))
-      else if (tile.recordingId) {
-        const load = text('button', '', 'Load recording')
-        load.addEventListener('click', () => enqueue(tile.key, true))
-        poster.append(load)
-      }
     }
     body.append(poster)
   }
@@ -312,12 +298,52 @@
   function ctlOf(view) {
     try { return view.iframe?.contentWindow?.__ctl?.timeline ? view.iframe.contentWindow.__ctl : null } catch { return null }
   }
-  function syncControls(view) {
+  /** Whether a tile's player has its recording to act on: a live one at once, a finished one once read. */
+  function playerReady(view) {
     const c = ctlOf(view)
-    const tl = c ? c.timeline() : null
-    view.el.classList.toggle('has-player', Boolean(tl))
-    if (!tl) return
+    if (!c) return false
+    const tl = c.timeline()
+    return view.tile.isLive || tl.scrubbing || (!tl.live && tl.total > 0)
+  }
+  /**
+   * A finished tile has no player until its controls are used: then one starts, and what was asked
+   * (play from the start, or the moment pressed) is done once it has read the recording.
+   */
+  function requestPlayer(view, action) {
+    view.pendingAction = action
+    if (view.state === 'idle' || view.state === 'error') { view.state = 'idle'; enqueue(view.tile.key, true) }
+    syncControls(view)
+  }
+  function pressPlay(view) {
+    if (!playerReady(view)) return requestPlayer(view, { kind: 'play' })
+    ctlOf(view).playPause()
+    syncControls(view)
+  }
+  function syncControls(view) {
+    if (view.pendingAction && playerReady(view)) {
+      const action = view.pendingAction
+      view.pendingAction = null
+      const c = ctlOf(view)
+      action.kind === 'play' ? c.playPause() : c.scrubTo(action.fraction * c.timeline().total)
+    }
+    const c = playerReady(view) ? ctlOf(view) : null
+    if (c && view.iframe?.style.visibility) view.iframe.style.visibility = ''
+    const hasRecording = Boolean(view.tile.recordingId) && view.tile.status !== 'never-run'
+    view.el.classList.toggle('has-recording', hasRecording || Boolean(c))
     const { tctl, play, fill, knob, time } = view.parts.ctl
+    tctl.classList.toggle('waiting', Boolean(view.pendingAction))
+    if (!c) {
+      // Placeholder controls: the run's length, the playhead at its end (where the thumbnail is), or where it was pressed.
+      const total = thumbs.get(view.tile.key)?.durationMs ?? view.tile.loaded?.durationMs ?? (view.tile.durationSeconds ?? 0) * 1000
+      const at = view.pendingAction?.kind === 'scrub' ? view.pendingAction.fraction : 1
+      fill.style.width = `${at * 100}%`
+      knob.style.left = `${at * 100}%`
+      time.textContent = total ? `${clock(at * total)} / ${clock(total)}` : view.pendingAction ? 'Loading…' : ''
+      play.textContent = view.pendingAction ? '…' : '▶'
+      tctl.classList.remove('scrubbing', 'is-live')
+      return
+    }
+    const tl = c.timeline()
     const at = tl.total > 0 ? Math.max(0, Math.min(1, tl.t / tl.total)) : 1
     fill.style.width = `${at * 100}%`
     knob.style.left = `${at * 100}%`
@@ -326,14 +352,15 @@
     tctl.classList.toggle('scrubbing', tl.scrubbing)
     tctl.classList.toggle('is-live', tl.live)
   }
-  /** Show the moment at `fraction` of the tile's timeline. */
+  /** Show the moment at `fraction` of the tile's timeline (starting its player first if it has none). */
   function seekTile(view, fraction) {
+    const f = Math.max(0, Math.min(1, fraction))
+    if (!playerReady(view)) return requestPlayer(view, { kind: 'scrub', fraction: f })
     const c = ctlOf(view)
-    if (!c) return
-    c.scrubTo(Math.max(0, Math.min(1, fraction)) * c.timeline().total)
+    c.scrubTo(f * c.timeline().total)
     syncControls(view)
   }
-  setInterval(() => { for (const [, view] of views) if (view.iframe) syncControls(view) }, 250)
+  setInterval(() => { for (const [, view] of views) syncControls(view) }, 250)
 
   // --------------------------------------------------------- thumbnails
   // Finished runs that are not playing show their last frame, which the relay draws once per run
@@ -348,7 +375,7 @@
     try {
       const res = await post('/qa/thumbnail', { projectId, kind: t.kind, sourceId: t.sourceId, title: t.title, goal: t.goal })
       if (!res.ok) throw new Error(res.data.error)
-      thumbs.set(t.key, { status: res.data.status, url: res.data.url, askedAt: Date.now() })
+      thumbs.set(t.key, { status: res.data.status, url: res.data.url, durationMs: res.data.durationMs ?? null, askedAt: Date.now() })
       if (res.data.status === 'ready' && views.get(t.key) === view) update(view, view.tile)
     } catch {
       thumbs.set(t.key, { status: 'error', url: null, askedAt: Date.now() })
@@ -396,7 +423,6 @@
     if (!victim) return false
     victim.iframe.remove()
     victim.iframe = null
-    victim.el.classList.remove('has-player')
     victim.state = 'idle'
     update(victim, victim.tile)
     return true
@@ -412,7 +438,9 @@
       if (!res.ok) throw new Error(res.data.error || 'The relay could not start this recording')
       const frame = document.createElement('iframe')
       frame.src = `/player/${encodeURIComponent(res.data.recording.id)}?mode=auto&tile=1&chrome=0&sub=0&${q()}`
-      view.parts.body.replaceChildren(frame)
+      // A finished run's thumbnail stays up until its player has read the recording (syncControls shows it).
+      if (!tile.isLive && view.parts.thumb) frame.style.visibility = 'hidden'
+      view.parts.body.replaceChildren(...(frame.style.visibility ? [view.parts.thumb] : []), frame)
       view.iframe = frame
       view.state = 'loaded'
       view.loadedAt = Date.now()
@@ -424,18 +452,13 @@
     pump()
   }
 
-  /** Live tiles start at once and in parallel (frames permitting); a few finished ones follow. */
+  /** Live tiles start at once and in parallel (frames permitting). */
   function autoLoad() {
     for (const tile of tiles) {
       const view = views.get(tile.key)
       if (view && tile.isLive && view.state === 'idle' && tile.recordingId && frames() < MAX_FRAMES && !queue.includes(tile.key)) start(view)
     }
-    if (!seeded && tiles.length) {
-      seeded = true
-      const finished = tiles.filter(t => !t.isLive && t.recordingId)
-      // The rest load when focused (double-click), so frames are not spent on tiles nobody looks at.
-      for (const t of finished.slice(0, embed ? MAX_FRAMES : AUTO_FINISHED)) enqueue(t.key)
-    }
+    // A finished tile gets a player only when its playback controls are used (requestPlayer).
   }
 
   // ------------------------------------------------------------- header
@@ -465,9 +488,6 @@
     filter = f
     for (const b of $('chips').children) b.classList.toggle('on', b.dataset.filter === f)
     applyFilter()
-  })
-  $('loadAll').addEventListener('click', () => {
-    for (const t of tiles) if (!t.isLive) enqueue(t.key)
   })
   $('follow').addEventListener('click', async () => {
     following = !following
@@ -576,13 +596,11 @@
     const control = target?.closest('.track') ? 'track' : target?.closest('.tplay') ? 'play' : target?.closest('.golive') ? 'live' : target?.closest('.tctl') ? 'bar' : null
     return { el, view, control }
   }
-  /** Bring a tile up close, loading its recording if it shows a poster. */
+  /** Bring a tile up close. */
   function focusTile(el) {
     moved()
     frame(el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight, MAX_ZOOM, true)
-    const view = [...views.values()].find(v => v.el === el)
-    if (view && view.state === 'idle') enqueue(view.tile.key, true)
-    return view?.tile.title ?? null
+    return [...views.values()].find(v => v.el === el)?.tile.title ?? null
   }
 
   new ResizeObserver(() => { if (autoFit) fitAll(); else drawMinimap() }).observe(grid)
@@ -621,8 +639,8 @@
         if (view && control === 'track') gesture = { id, kind: 'scrub', view }
         else if (view && (control === 'play' || control === 'live')) {
           gesture = { id, kind: 'pressed' }
-          control === 'play' ? ctlOf(view)?.playPause() : ctlOf(view)?.follow()
-          syncControls(view)
+          if (control === 'play') pressPlay(view)
+          else { ctlOf(view)?.follow(); syncControls(view) }
         } else if (control) gesture = { id, kind: 'pressed' }
         else gesture = { id, kind: 'pan', x0: cam.x, y0: cam.y }
       }

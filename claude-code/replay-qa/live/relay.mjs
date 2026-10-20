@@ -811,10 +811,16 @@ const thumbJobs = new Map()
 const thumbQueue = []
 let thumbsRunning = 0
 const thumbFile = id => path.join(THUMB_DIR, `${safeId(id)}.png`)
+/** Beside each thumbnail, the recording's length: what the canvas's controls show before a player has it. */
+const thumbInfoFile = id => path.join(THUMB_DIR, `${safeId(id)}.json`)
 
-/** `ready` with the file, `pending` while it is read and drawn, or `error` with why. */
+/** `ready` with the file (and the recording's length), `pending` while it is read and drawn, or `error` with why. */
 function thumbnailState(id) {
-  if (fs.existsSync(thumbFile(id))) return { status: 'ready' }
+  if (fs.existsSync(thumbFile(id))) {
+    let durationMs = null
+    try { durationMs = JSON.parse(fs.readFileSync(thumbInfoFile(id), 'utf8')).durationMs ?? null } catch {}
+    return { status: 'ready', durationMs }
+  }
   const job = thumbJobs.get(id)
   return job ? { status: job.error ? 'error' : 'pending', error: job.error ?? null } : null
 }
@@ -866,6 +872,7 @@ async function drawThumbnail(id, source) {
     const { data } = await chrome.send('Page.captureScreenshot', { format: 'png' }, target.sessionId)
     const tmp = `${thumbFile(id)}.${process.pid}.tmp`
     await fsp.writeFile(tmp, Buffer.from(data, 'base64'))
+    await fsp.writeFile(thumbInfoFile(id), JSON.stringify({ durationMs: durationOf(rec) }))
     await fsp.rename(tmp, thumbFile(id))
   } finally {
     await closeTarget(target)
