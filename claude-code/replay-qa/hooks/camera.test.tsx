@@ -74,7 +74,9 @@ async function openCanvas($: Parameters<Test>[0], on: Parameters<Test>[1]) {
   await ui.resize({ columns: 80, rows: 22, in: 'camera' })
   // The moves the person made: the pane also asks for the camera's state as it draws and resizes.
   const moves = () => camera.filter(c => c.op !== 'state')
-  return { ui, clock, camera, views, moves }
+  /** The same, less the gestures every press sends (the page decides what a gesture does). */
+  const others = () => moves().filter(c => c.op !== 'gesture')
+  return { ui, clock, camera, views, moves, others }
 }
 
 test('the pane is the canvas: the picture fills it and the screencast takes its shape', async ($, on) => {
@@ -86,23 +88,22 @@ test('the pane is the canvas: the picture fills it and the screencast takes its 
   await ui.unmount()
 })
 
-test('dragging over the picture pans the canvas by the distance moved, once', async ($, on) => {
-  const { ui, clock, camera } = await openCanvas($, on)
+test('a drag reaches the page as one gesture, each post carrying all of it', async ($, on) => {
+  const { ui, clock, moves } = await openCanvas($, on)
   await act(ui, 'pointer', { type: 'down', x: 20, y: 10, button: 'left', in: 'camera' })
   await act(ui, 'pointer', { type: 'move', x: 30, y: 10, button: 'left', in: 'camera' })
   await act(ui, 'pointer', { type: 'move', x: 40, y: 5, button: 'left', in: 'camera' })
   await act(ui, 'pointer', { type: 'up', x: 40, y: 5, button: 'left', in: 'camera' })
   await clock.settle()
-  const pans = camera.filter(c => c.op === 'pan')
-  expect(pans.length).toBeGreaterThan(0)
-  const total = pans.reduce((sum, p) => ({ dx: sum.dx + (p.dx as number), dy: sum.dy + (p.dy as number) }), { dx: 0, dy: 0 })
-  expect(Math.abs(total.dx - 20 / 80) < 1e-9).toBe(true)
-  expect(Math.abs(total.dy - -5 / 22) < 1e-9).toBe(true)
+  const gestures = moves()
+  expect(gestures.every(g => g.op === 'gesture' && g.id === gestures[0]!.id && g.sx === 20.5 / 80 && g.sy === 10.5 / 22)).toBe(true)
+  expect(gestures[0]).toEqual({ op: 'gesture', id: gestures[0]!.id, sx: 20.5 / 80, sy: 10.5 / 22, x: 20.5 / 80, y: 10.5 / 22, done: false })
+  expect(gestures[gestures.length - 1]).toEqual({ op: 'gesture', id: gestures[0]!.id, sx: 20.5 / 80, sy: 10.5 / 22, x: 40.5 / 80, y: 5.5 / 22, done: true })
   await ui.unmount()
 })
 
 test('a double-click focuses the tile under it; keys zoom and fit', async ($, on) => {
-  const { ui, clock, moves } = await openCanvas($, on)
+  const { ui, clock, others } = await openCanvas($, on)
   await act(ui, 'pointer', { type: 'down', x: 60, y: 4, button: 'left', in: 'camera' })
   await act(ui, 'pointer', { type: 'up', x: 60, y: 4, button: 'left', in: 'camera' })
   await act(ui, 'pointer', { type: 'down', x: 60, y: 4, button: 'left', in: 'camera' })
@@ -110,7 +111,7 @@ test('a double-click focuses the tile under it; keys zoom and fit', async ($, on
   await act(ui, 'key', { key: '+', in: 'camera' })
   await act(ui, 'key', { key: '0', in: 'camera' })
   await clock.settle()
-  expect(moves()).toEqual([
+  expect(others()).toEqual([
     { op: 'focus', x: 60.5 / 80, y: 4.5 / 22 },
     { op: 'zoom', factor: 1.25 },
     { op: 'fit' },
@@ -140,7 +141,7 @@ test('the footer zoom controls move the camera and show its zoom', async ($, on)
   await ui.unmount()
 })
 
-test('pressing or dragging on the minimap moves the view there; elsewhere a drag pans', async ($, on) => {
+test('pressing or dragging on the minimap moves the view there, and is no gesture', async ($, on) => {
   const { ui, clock, moves } = await openCanvas($, on)
   await ui.press({ key: 'fit' })
   await clock.settle()
@@ -154,6 +155,6 @@ test('pressing or dragging on the minimap moves the view there; elsewhere a drag
   const near = (a: number, b: number) => Math.abs(a - b) < 1e-9
   expect(near(jumps[0]!.x as number, (63.5 / 80 - 0.75) / 0.2) && near(jumps[0]!.y as number, (16.5 / 22 - 0.7) / 0.25)).toBe(true)
   expect(near(jumps[1]!.x as number, (71.5 / 80 - 0.75) / 0.2) && near(jumps[1]!.y as number, (19.5 / 22 - 0.7) / 0.25)).toBe(true)
-  expect(moves().some(m => m.op === 'pan')).toBe(false)
+  expect(moves().some(m => m.op === 'gesture')).toBe(false)
   await ui.unmount()
 })

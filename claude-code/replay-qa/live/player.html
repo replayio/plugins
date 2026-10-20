@@ -320,6 +320,8 @@
     const fresh = events.slice(Math.max(0, all.length - from))
     if (!fresh.length) return
     all.push(...fresh)
+    // A tile being scrubbed keeps reading, and shows the new events when it follows again.
+    if (scrubbing) return
     if (!replayer) {
       // The stream is renderable once a Meta is followed by a FullSnapshot.
       if (rebuild(lastTs() - 300)) return
@@ -332,11 +334,61 @@
 
   /** The stream is over: show the final frame at once. */
   const finalize = () => {
+    streamEnded = true
+    if (scrubbing) return
     if (all.length && !rebuild(lastTs() + 1) && !replayer) say(cur && cur.error ? cur.error : 'No frames were recorded')
     setBadge('ended', cur && cur.status === 'error' ? 'ERROR' : 'ENDED')
   }
 
   const onFeed = items => { feedSeen += items.length; showFeed(items) }
+
+  // ------------------------------------------------------------ tile scrub
+  // A canvas tile follows its recording, and can leave that to scrub: the events read so far replay,
+  // paused at the point asked for (the picture the canvas shows is that moment), until it follows again.
+  // The canvas drives it through these and draws the controls itself.
+  let scrubbing = false
+  let streamEnded = false
+  const span = () => (all.length > 1 ? all[all.length - 1].timestamp - all[0].timestamp : 0)
+  const enterScrub = (t, paused) => {
+    if (!fromLastSnapshot(all).length && all.length < 2) return false
+    scrubbing = true
+    boot.events = all.slice()
+    startReplay(t, paused)
+    return true
+  }
+  Object.assign(ctl, {
+    /** Where the tile is: following (the whole span so far) or scrubbing (the playhead). */
+    timeline() {
+      const live = cur ? cur.status === 'live' || cur.status === 'loading' : false
+      if (!scrubbing) return { t: span(), total: span(), paused: !live, scrubbing: false, live }
+      const s = ctl.state()
+      return { t: s.t, total: s.total, paused: s.paused, scrubbing: true, live }
+    },
+    /** Shows the moment `ms` from the start, paused; the first call leaves following. */
+    scrubTo(ms) {
+      if (!scrubbing) return enterScrub(ms, true)
+      replayer && replayer.pause(Math.max(0, Math.min(total, ms)))
+      finished = false
+      return true
+    },
+    /** Play or pause; while following, play the recording from its start. */
+    playPause() {
+      if (!scrubbing) return enterScrub(0, false)
+      ctl.toggle()
+      return true
+    },
+    /** Back to following: the newest frame, live while the recording runs. */
+    follow() {
+      if (!scrubbing) return true
+      scrubbing = false
+      clearInterval(reporting)
+      replaying = false
+      followPlayhead = false
+      if (!rebuild(streamEnded ? lastTs() + 1 : lastTs() - 300)) say('Waiting for the first frame…')
+      if (streamEnded) setBadge('ended', 'ENDED')
+      return true
+    },
+  })
   let handledEnd = false
   /** A live view in a browser becomes the scrubbable recording, parked at its end. */
   const onEnded = async () => {
