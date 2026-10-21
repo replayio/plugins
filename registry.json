@@ -15,6 +15,11 @@
           "target": "~/.codex-plugin/plugin.json"
         },
         {
+          "path": "codex/replay-qa/.mcp.json",
+          "type": "registry:file",
+          "target": "~/.mcp.json"
+        },
+        {
           "path": "codex/replay-qa/LICENSE",
           "type": "registry:file",
           "target": "~/LICENSE"

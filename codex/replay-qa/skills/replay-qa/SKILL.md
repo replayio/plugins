@@ -119,6 +119,16 @@ node "$SCRIPT_DIR/rerun-journeys.js" --bug-id bug_id_here
 node "$SCRIPT_DIR/report-missing-bug.js" "Settings changes do not persist after refresh."
 ```
 
+## Dashboard
+
+The plugin connects the Replay QA MCP server (`https://qa.replay.io/api/mcp`, the same server ChatGPT uses; it signs in with Replay on first use). When the user wants to see Replay QA results, call its `open_qa_dashboard` tool instead of printing lists:
+
+- `open_qa_dashboard` with no arguments shows the user's projects to pick from.
+- Pass `project_id` (a project id or a Replay QA dashboard URL, such as the project from `.replay/config.json`) to open that project's overview; `page` opens `bugs`, `test-runs`, `journeys`, or `explorations`.
+- Pass `bug_id` or `test_run_id` to open that bug report or test run with its recording.
+
+Where the host draws MCP Apps, the dashboard appears in the conversation and tells you which bug or run the user is looking at; its **Fix this bug** button sends you a message naming the bug. Elsewhere the tool answers with a one-line summary, and the scripts below remain the way to read details.
+
 ## Agent Workflow
 
 Use this loop for QA and repair:

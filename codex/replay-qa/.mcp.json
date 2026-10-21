@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "replay-qa": {
+      "type": "http",
+      "url": "https://qa.replay.io/api/mcp"
+    }
+  }
+}
