@@ -48,7 +48,11 @@ Never print API tokens. If the API returns 401, ask the user to export a Replay 
 
 ## Project Reuse
 
-Before creating or selecting a Replay QA project, inspect the current project root for `.replay/config.json`.
+Resolve the project in this order: an explicit project named by the user; the selected project in the latest Replay QA MCP App context (`project_id`, `project_name`, `target_url`); then `.replay/config.json`. The app's selection applies to the current conversation. If the app context says no project is selected, ask the user to choose one instead of reusing an earlier app selection. Do not change the repo's config just because the user picked a project in the app.
+
+When using a bundled script for the selected app project, pass its ID explicitly with `--project-id` so a repo config cannot select a different project.
+
+Only when this conversation has no Replay QA app selection context and the request names no project, inspect the current project root for `.replay/config.json` before creating one. An app context that explicitly clears the selection requires choosing a project; it is not a request to fall back to the repo config.
 
 Resolve the project root with `git rev-parse --show-toplevel`; if that fails, use the current directory. If `.replay/config.json` contains a non-empty string property named `"qa-project-id"`, reuse that project id for all Replay QA work in this repo. Do not create a duplicate project unless the user explicitly asks for a new project or the stored project is proven invalid for the current account.
 
@@ -118,6 +122,17 @@ node "$SCRIPT_DIR/start-exploration.js" "Focus on onboarding, invalid inputs, re
 node "$SCRIPT_DIR/rerun-journeys.js" --bug-id bug_id_here
 node "$SCRIPT_DIR/report-missing-bug.js" "Settings changes do not persist after refresh."
 ```
+
+## Dashboard
+
+The plugin connects the Replay QA MCP server (`https://qa.replay.io/api/mcp`, the same server ChatGPT uses; it signs in with Replay on first use). When the user wants to see Replay QA results, call its `open_qa_dashboard` tool instead of printing lists:
+
+- For "open Replay QA", "show my projects", or choosing a project, call `open_qa_dashboard` with no arguments. The project index includes pagination; do not infer a project from the repo for this request.
+- Selecting a project sets the conversation's current project and attaches its identity to the composer. **All projects** returns to the index and clears that selection. **Chat about this project** prepares an editable project-scoped prompt in the current conversation; picking a project alone does not authorize starting QA.
+- Pass `project_id` (a project id or a Replay QA dashboard URL, such as the project from `.replay/config.json`) to open that project's overview; `page` opens `bugs`, `test-runs`, `journeys`, or `explorations`.
+- Pass `bug_id` or `test_run_id` to open that bug report or test run with its recording.
+
+Where the host draws MCP Apps, the dashboard appears in the conversation and tells you which bug or run the user is looking at; its **Fix this bug** button sends you a message naming the bug. Elsewhere the tool answers with a one-line summary, and the scripts below remain the way to read details.
 
 ## Agent Workflow
 

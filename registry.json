@@ -15,6 +15,11 @@
           "target": "~/.codex-plugin/plugin.json"
         },
         {
+          "path": "codex/replay-qa/.mcp.json",
+          "type": "registry:file",
+          "target": "~/.mcp.json"
+        },
+        {
           "path": "codex/replay-qa/LICENSE",
           "type": "registry:file",
           "target": "~/LICENSE"
@@ -23,6 +28,16 @@
           "path": "codex/replay-qa/assets/replayio.svg",
           "type": "registry:file",
           "target": "~/assets/replayio.svg"
+        },
+        {
+          "path": "codex/replay-qa/assets/replay-qa-logo.png",
+          "type": "registry:file",
+          "target": "~/assets/replay-qa-logo.png"
+        },
+        {
+          "path": "codex/replay-qa/assets/replay-qa-composer.png",
+          "type": "registry:file",
+          "target": "~/assets/replay-qa-composer.png"
         },
         {
           "path": "codex/replay-qa/skills/replay-qa/SKILL.md",
