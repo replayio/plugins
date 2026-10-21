@@ -52,7 +52,7 @@ Resolve the project in this order: an explicit project named by the user; the se
 
 When using a bundled script for the selected app project, pass its ID explicitly with `--project-id` so a repo config cannot select a different project.
 
-When neither the request nor app context selects a project, inspect the current project root for `.replay/config.json` before creating one.
+Only when this conversation has no Replay QA app selection context and the request names no project, inspect the current project root for `.replay/config.json` before creating one. An app context that explicitly clears the selection requires choosing a project; it is not a request to fall back to the repo config.
 
 Resolve the project root with `git rev-parse --show-toplevel`; if that fails, use the current directory. If `.replay/config.json` contains a non-empty string property named `"qa-project-id"`, reuse that project id for all Replay QA work in this repo. Do not create a duplicate project unless the user explicitly asks for a new project or the stored project is proven invalid for the current account.
 
