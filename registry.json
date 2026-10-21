@@ -30,6 +30,16 @@
           "target": "~/assets/replayio.svg"
         },
         {
+          "path": "codex/replay-qa/assets/replay-qa-logo.png",
+          "type": "registry:file",
+          "target": "~/assets/replay-qa-logo.png"
+        },
+        {
+          "path": "codex/replay-qa/assets/replay-qa-composer.png",
+          "type": "registry:file",
+          "target": "~/assets/replay-qa-composer.png"
+        },
+        {
           "path": "codex/replay-qa/skills/replay-qa/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replay-qa/SKILL.md"

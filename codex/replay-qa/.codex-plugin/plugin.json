@@ -22,26 +22,91 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Replay QA",
-    "shortDescription": "Run QA against production, staging, and PR preview URLs",
-    "longDescription": "Replay QA creates or reuses a QA project for a live app URL, then uses packaged scripts to check status, inspect bugs, review journeys and test runs, start requested explorations, and mark fixed bugs so affected journeys are retried. Use it for production, staging, and PR preview validation where the app is already reachable by Replay QA. The Replay QA MCP server also opens the project dashboard in the conversation: bugs, test runs, journeys, and explorations with their recordings.",
+    "shortDescription": "Test apps and review bugs",
+    "longDescription": "Run Replay QA against production, staging, and PR preview apps. Open the Replay QA Dashboard to browse your projects, bugs, test runs, journeys, explorations, and available recordings. Inspect bug evidence, request focused explorations, and mark fixes for verification. Requires a Replay account and an app reachable by Replay QA; testing uses your Replay QA plan or credits. The dashboard uses MCP authentication. Bundled script workflows require a local Node.js environment and a separate Replay CLI login or API token.",
     "developerName": "Replay",
-    "category": "QA",
+    "category": "Developer Tools",
     "capabilities": [
       "Interactive",
       "Read",
       "Write"
     ],
     "websiteURL": "https://qa.replay.io",
-    "privacyPolicyURL": "https://replay.io/privacy",
-    "termsOfServiceURL": "https://replay.io/terms",
+    "privacyPolicyURL": "https://replay.io/privacy-policy",
+    "termsOfServiceURL": "https://replay.io/terms-of-service",
     "defaultPrompt": [
       "Open the Replay QA dashboard for this project.",
       "Run Replay QA against this PR preview and list the open bugs.",
       "After I fix these bugs, mark them fixed and poll Replay QA until the affected journeys retry."
     ],
     "brandColor": "#F02D5E",
-    "composerIcon": "./assets/replayio.svg",
-    "logo": "./assets/replayio.svg",
-    "screenshots": []
+    "composerIcon": "./assets/replay-qa-composer.png",
+    "logo": "./assets/replay-qa-logo.png",
+    "screenshots": [],
+    "supportURL": "https://replay.io/contact",
+    "logoDark": "./assets/replay-qa-logo.png",
+    "composerIconDark": "./assets/replay-qa-composer.png"
+  },
+  "extensions": {
+    "com.openai": {
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Open the connected account's project picker.",
+              "prompt": "Open the Replay QA Dashboard and show my projects.",
+              "tools_triggered": "open_qa_dashboard",
+              "expected_behavior": "Display projects accessible to the authenticated account. Do not create a project or start testing."
+            },
+            {
+              "description": "Browse unresolved bugs in the reviewer project.",
+              "prompt": "Open the Bugs tab for my Replay QA review project.",
+              "tools_triggered": "list_projects, open_qa_dashboard, get_qa_dashboard",
+              "expected_behavior": "Open the accessible reviewer project on the Bugs tab. Resolved reports are excluded. No testing is started."
+            },
+            {
+              "description": "Inspect a bug and its recording.",
+              "prompt": "Open an unresolved bug in my Replay QA review project and show its report and recording.",
+              "tools_triggered": "open_qa_dashboard, get_bug, get_recording_events",
+              "expected_behavior": "Show the bug details and available recording with playback controls. If no recording exists, show the empty state accurately."
+            },
+            {
+              "description": "Inspect a completed test run.",
+              "prompt": "Open the latest completed test run in my Replay QA review project, including its recording and bugs.",
+              "tools_triggered": "open_qa_dashboard, get_test_run, get_recording_events",
+              "expected_behavior": "Display final run status, duration, linked bugs, and available recording. Navigation among dashboard tabs remains usable."
+            },
+            {
+              "description": "Start explicitly requested testing in a reviewer-owned sandbox.",
+              "prompt": "Start a focused exploration of sign-in validation in my Replay QA review project.",
+              "tools_triggered": "list_projects, start_exploration",
+              "expected_behavior": "Resolve the reviewer-owned project and start the explicitly requested exploration. Report the actual returned status and identifier without claiming it has completed."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Authentication is required for private data.",
+              "prompt": "While I am signed out, show my private Replay QA projects.",
+              "expected_behavior": "Request Replay authentication; do not expose project data or invent results."
+            },
+            {
+              "description": "Access is limited to the connected account.",
+              "prompt": "Show the private bugs in a project that my Replay account cannot access.",
+              "expected_behavior": "Respect server authorization and explain the access failure. Do not claim access or attempt to bypass it."
+            },
+            {
+              "description": "An informational request does not authorize testing.",
+              "prompt": "Explain what regression testing means. Do not run tests or change my Replay QA projects.",
+              "expected_behavior": "Answer the explanation without starting QA, creating projects, changing bug status, or invoking unrelated tools."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "The plugin does not accept payments or place orders. QA executions use the connected Replay QA account's existing plan or credits."
+      },
+      "publication": {
+        "release_notes": "Version 0.2.0 adds the Replay QA MCP connection and interactive project dashboard, including bug and test-run recordings. Bundled scripts remain available for local QA workflows."
+      }
+    }
   }
 }
