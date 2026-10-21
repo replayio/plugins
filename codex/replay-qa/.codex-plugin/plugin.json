@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Replay QA",
     "shortDescription": "Test apps and review bugs",
-    "longDescription": "Run Replay QA against production, staging, and PR preview apps. Open the Replay QA Dashboard to browse your projects, bugs, test runs, journeys, explorations, and available recordings. Inspect bug evidence, request focused explorations, and mark fixes for verification. Requires a Replay account and an app reachable by Replay QA; testing uses your Replay QA plan or credits. The dashboard uses MCP authentication. Bundled script workflows require a local Node.js environment and a separate Replay CLI login or API token.",
+    "longDescription": "Open Replay QA to browse your projects, select the one you want to work on, and chat about its bugs, test runs, journeys, explorations, and recordings. The selected project is attached to the current conversation, and you can switch projects from the dashboard. Request focused explorations and mark fixes for verification. Requires a Replay account and an app reachable by Replay QA; testing uses your Replay QA plan or credits. The dashboard uses MCP authentication. Bundled local script workflows require Node.js and a separate Replay CLI login or API token.",
     "developerName": "Replay",
     "category": "Developer Tools",
     "capabilities": [
@@ -35,7 +35,7 @@
     "privacyPolicyURL": "https://replay.io/privacy-policy",
     "termsOfServiceURL": "https://replay.io/terms-of-service",
     "defaultPrompt": [
-      "Open the Replay QA dashboard for this project.",
+      "Show my Replay QA projects.",
       "Run Replay QA against this PR preview and list the open bugs.",
       "After I fix these bugs, mark them fixed and poll Replay QA until the affected journeys retry."
     ],
@@ -56,13 +56,13 @@
               "description": "Open the connected account's project picker.",
               "prompt": "Open the Replay QA Dashboard and show my projects.",
               "tools_triggered": "open_qa_dashboard",
-              "expected_behavior": "Display projects accessible to the authenticated account. Do not create a project or start testing."
+              "expected_behavior": "Display a paginated index of projects accessible to the authenticated account. Selecting a project attaches its ID, name and target URL to the current conversation. Returning to All projects clears the selection. Do not create a project or start testing."
             },
             {
               "description": "Browse unresolved bugs in the reviewer project.",
-              "prompt": "Open the Bugs tab for my Replay QA review project.",
+              "prompt": "Open the Bugs tab for my Replay QA review project and tell me which project we are working in.",
               "tools_triggered": "list_projects, open_qa_dashboard, get_qa_dashboard",
-              "expected_behavior": "Open the accessible reviewer project on the Bugs tab. Resolved reports are excluded. No testing is started."
+              "expected_behavior": "Open the accessible reviewer project on the Bugs tab and answer using its selected identity from the app context. Resolved reports are excluded. Chat about this project prepares an editable prompt for the same project without submitting it. No testing is started."
             },
             {
               "description": "Inspect a bug and its recording.",
@@ -105,7 +105,7 @@
         "commerce_description": "The plugin does not accept payments or place orders. QA executions use the connected Replay QA account's existing plan or credits."
       },
       "publication": {
-        "release_notes": "Version 0.2.0 adds the Replay QA MCP connection and interactive project dashboard, including bug and test-run recordings. Bundled scripts remain available for local QA workflows."
+        "release_notes": "Version 0.2.0 adds the Replay QA MCP connection, a paginated project index, conversation-scoped project selection, and the interactive dashboard with bug and test-run recordings. Bundled scripts remain available for local QA workflows."
       }
     }
   }
