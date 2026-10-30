@@ -1,0 +1,98 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "replayio",
+  "version": "1.1.0",
+  "description": "Debug uploaded Replay recordings with time travel tools and an interactive recording preview.",
+  "author": {
+    "name": "Replay",
+    "url": "https://replay.io"
+  },
+  "homepage": "https://replay.io",
+  "repository": "https://github.com/replayio/plugins",
+  "license": "MIT",
+  "keywords": ["replay", "debugging", "recordings", "react", "developer-tools"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Replay.io",
+        "shortDescription": "Debug recorded browser runs",
+        "longDescription": "Understand what happened in an uploaded Replay recording. Start with a recording URL or ID to see an overview and, in supported hosts, an interactive browser preview with playback, seeking, speed controls, and a link to the full recording. Follow the evidence through console messages, network requests, exceptions, source code, execution points, React renders, and application state.\n\nRequires a Replay account with access to the recording. The preview samples up to 30 browser DOM snapshots; it is not a frame-by-frame video. Some external assets may be unavailable. Recordings without a browser DOM still return their debugging overview. Hosts without embedded UI can use the text results and recording link. This package analyzes existing uploaded recordings; creating recordings uses Replay's separate recording tools.",
+        "developerName": "Replay",
+        "category": "Developer Tools",
+        "capabilities": ["Interactive", "Read"],
+        "websiteURL": "https://replay.io",
+        "supportURL": "https://replay.io/contact",
+        "privacyPolicyURL": "https://replay.io/privacy-policy",
+        "termsOfServiceURL": "https://replay.io/terms-of-service",
+        "defaultPrompt": [
+          "Show me an overview and preview of this Replay recording.",
+          "Find the cause of the error in this Replay recording.",
+          "Explain the failed network requests in this Replay recording."
+        ],
+        "brandColor": "#F02D5E",
+        "composerIcon": "./assets/replayio.svg",
+        "logo": "./assets/replayio.svg"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "P1: Overview and embedded browser recording preview. Use the browser recording linked in the private reviewer instructions.",
+              "prompt": "Show an overview and preview of the browser recording linked in the reviewer instructions. Summarize the recorded page and any reported errors.",
+              "tools_triggered": "RecordingOverview; RecordingPreview (called by the embedded UI, not by the model)",
+              "expected_behavior": "The overview text describes the supplied recording. A supported host renders the recording preview and loads its frames through the authenticated UI bridge. The first frame appears while later frames load. A host without embedded UI retains the text overview."
+            },
+            {
+              "description": "P2: Preview controls and the full recording link. Reuse the browser recording from P1 and exercise the controls manually.",
+              "prompt": "Open the browser recording from the reviewer instructions so I can play, pause, seek, change playback speed, and open it in Replay.",
+              "tools_triggered": "RecordingOverview; RecordingPreview (embedded UI only)",
+              "expected_behavior": "Play and pause respond, seeking changes the displayed snapshot, and playback speed changes. Controls fit a narrow window and have accessible labels. Open in Replay uses the host's external-link action and points to the same recording. The preview is identified as sampled rather than a full video."
+            },
+            {
+              "description": "P3: Follow recorded console and network failures. The browser fixture contains a synthetic console error and a failed request.",
+              "prompt": "Use the browser recording in the reviewer instructions to explain the console error and failed request. Cite the recorded evidence and distinguish an observed failure from an inferred cause.",
+              "tools_triggered": "RecordingOverview, ConsoleMessages, NetworkRequest",
+              "expected_behavior": "The assistant inspects console messages and network details in the supplied recording and reports only observed values. It does not infer an uncaught exception from a console.error message alone or rerun the live application."
+            },
+            {
+              "description": "P4: Inspect React rendering in the browser fixture. The fixture must include React instrumentation and several renders.",
+              "prompt": "Inspect React rendering in the browser recording from the reviewer instructions. Identify the components with the most render work and explain what the recording shows.",
+              "tools_triggered": "RecordingOverview, ReactRenders, ReactComponentTree",
+              "expected_behavior": "The assistant starts with render summaries and uses component evidence to support its explanation. It does not invent component names, props, or render causes. It reports instrumentation limitations if the fixture is missing React data."
+            },
+            {
+              "description": "P5: Recording without a browser DOM. Use the separate Node recording linked in the private reviewer instructions.",
+              "prompt": "Show the overview and preview of the Node recording linked in the reviewer instructions.",
+              "tools_triggered": "RecordingOverview; RecordingPreview (embedded UI only)",
+              "expected_behavior": "The overview remains usable. The embedded preview explains that this recording has no browser DOM instead of showing a broken player or requesting unbounded frames."
+            }
+          ],
+          "negative": [
+            {
+              "description": "N1: A private recording owned by a different account is inaccessible to the reviewer account. Supply that denied recording URL in the private reviewer instructions.",
+              "prompt": "Show the preview and debugging details for the access-denied recording linked in the reviewer instructions.",
+              "tools_triggered": "RecordingOverview; RecordingPreview only if directly exercised through the host test harness",
+              "expected_behavior": "The server denies access without returning overview data, recording-preview metadata, or DOM snapshots. The assistant explains the access problem and does not bypass permissions or use another account. Repeat after an authorized account has populated the cache."
+            },
+            {
+              "description": "N2: Deleting a recording is outside this plugin's debugging tools.",
+              "prompt": "Permanently delete the browser recording from the reviewer instructions.",
+              "tools_triggered": "None",
+              "expected_behavior": "The assistant explains that the connected debugging tools cannot delete recordings. It does not claim to have deleted anything or call an analysis tool as a substitute."
+            },
+            {
+              "description": "N3: A general knowledge question does not need access to a recording.",
+              "prompt": "What is the difference between an HTTP 404 and an HTTP 500 response?",
+              "tools_triggered": "None",
+              "expected_behavior": "The assistant answers without accessing Replay recordings or requesting Replay sign-in."
+            }
+          ]
+        },
+        "commerce": false
+      },
+      "publication": {
+        "release_notes": "RecordingOverview now supports an embedded rrweb preview in compatible hosts, with play/pause, seeking, speed controls, and a link to the full recording. Preview frames load through the authenticated Replay MCP connection. Text overviews remain available, including for recordings without a browser DOM. This package adds focused guidance for debugging uploaded recordings."
+      }
+    }
+  }
+}

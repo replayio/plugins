@@ -1,0 +1,16 @@
+{
+  "package_version": "1.1.0",
+  "deployed_backend_revision": null,
+  "host_and_version": null,
+  "executed_at": null,
+  "cases": [
+    { "id": "P1", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "P2", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "P3", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "P4", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "P5", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "N1", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "N2", "status": "not_run", "observed": null, "evidence_url": null },
+    { "id": "N3", "status": "not_run", "observed": null, "evidence_url": null }
+  ]
+}

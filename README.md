@@ -64,3 +64,9 @@ Validate the registry before publishing changes:
 ```bash
 npx shadcn@latest registry validate registry.json
 ```
+
+## OpenAI public directory
+
+For the Replay.io store release package, build commands, and submission steps,
+see [openai/README.md](openai/README.md). This release is separate from the manual
+Replay.io Pro Git marketplace package.
