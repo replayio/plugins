@@ -2,13 +2,13 @@
   "hooks": {
     "afterShellExecution": [
       {
-        "command": "bash \"${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/scripts/post_bash_upload.sh\"",
-        "matcher": "playwright.*close|pwcli.*close|PWCLI.*close"
+        "command": "node \"${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/live/rrweb.mjs\" hook",
+        "matcher": "agent-browser|browser-open|browser-close"
       }
     ],
     "stop": [
       {
-        "command": "bash \"${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/scripts/stop_close_and_upload.sh\""
+        "command": "node \"${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}/live/rrweb.mjs\" stop >/dev/null"
       }
     ]
   }

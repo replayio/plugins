@@ -4,9 +4,12 @@ Configure the browser executable before opening the host agent browser:
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
+
+`AGENT_BROWSER_PROFILE` tells agent-browser to copy login state from the main Chrome profile into a temporary Replay Chromium profile. `Default` is the normal default; run `agent-browser profiles` and set a different display or directory name when needed. The source Chrome profile is never modified, and the temporary copy is deleted when the Replay browser closes. Omit the profile setting when a clean unauthenticated session is required.
 
 The Replay plugin no longer expects normal browser work to go through `playwright-cli`. Use the host agent browser or browser tool directly, with Replay Chromium selected by `AGENT_BROWSER_EXECUTABLE_PATH`.
 

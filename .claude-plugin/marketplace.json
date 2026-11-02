@@ -11,8 +11,8 @@
     {
       "name": "replayio",
       "source": "./claude-code/replayio",
-      "description": "Record agent browser runs in Replay Chromium, watch and scrub them inline in the conversation, upload recordings, and debug them with Replay MCP.",
-      "version": "0.2.0",
+      "description": "Record every agent-browser run in Replay Chromium as an rrweb stream, watch it live or replay it inline in the conversation, and debug uploaded recordings with Replay MCP.",
+      "version": "0.3.0",
       "category": "development",
       "homepage": "https://docs.replay.io/basics/debugging/claude-code"
     },

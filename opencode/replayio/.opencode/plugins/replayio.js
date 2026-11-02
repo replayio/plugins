@@ -1,4 +1,8 @@
-const closePattern = /(playwright|pwcli|PWCLI).*close/;
+import { fileURLToPath } from "node:url";
+
+// Every agent-browser session runs in Replay Chromium and is recorded as an rrweb stream by the
+// shared relay: see ../replayio-live/rrweb.mjs.
+const cli = fileURLToPath(new URL("../replayio-live/rrweb.mjs", import.meta.url));
 
 function shellText(value) {
   if (!value) return "";
@@ -15,54 +19,6 @@ function shellText(value) {
     );
   }
   return "";
-}
-
-async function commandExists($, command) {
-  try {
-    await $`command -v ${command} >/dev/null 2>&1`;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function uploadPending($, client) {
-  if (!(await commandExists($, "replayio"))) {
-    await log(client, "warn", "replayio CLI not found on PATH; skipping upload");
-    return;
-  }
-  try {
-    await $`replayio upload-all >/dev/null 2>&1 || replayio upload >/dev/null 2>&1 || true`;
-    await log(client, "info", "Uploaded pending Replay recordings");
-  } catch (error) {
-    await log(client, "warn", `Replay upload failed: ${formatError(error)}`);
-  }
-}
-
-async function closeLingeringSessions($, client) {
-  if (!(await commandExists($, "npx"))) return;
-  let listing = "";
-  try {
-    const result = await $`npx --yes --package @playwright/cli playwright-cli list 2>/dev/null || true`;
-    listing = String(result.stdout || "");
-  } catch {
-    return;
-  }
-
-  const sessions = new Set();
-  for (const line of listing.split(/\r?\n/)) {
-    const match = line.match(/^\s+([A-Za-z0-9_-]+)\b/);
-    if (match) sessions.add(match[1]);
-  }
-
-  for (const session of sessions) {
-    try {
-      await $`npx --yes --package @playwright/cli playwright-cli --session=${session} close >/dev/null 2>&1 || true`;
-      await log(client, "info", `Closed lingering Replay browser session: ${session}`);
-    } catch {
-      // Best effort cleanup only.
-    }
-  }
 }
 
 async function log(client, level, message) {
@@ -83,7 +39,7 @@ function formatError(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export const ReplayPlugin = async ({ client, $ }) => {
+export const ReplayPlugin = async ({ client, $, directory }) => {
   const replayChromium =
     (process.env.HOME || "") + "/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium";
 
@@ -98,18 +54,24 @@ export const ReplayPlugin = async ({ client, $ }) => {
     },
 
     "tool.execute.after": async (input) => {
-      const text = shellText(input?.args || input?.tool_input || input);
-      if (input?.tool === "bash" || input?.tool === "shell") {
-        if (closePattern.test(text)) {
-          await uploadPending($, client);
-        }
+      if (input?.tool !== "bash" && input?.tool !== "shell") return;
+      const command = shellText(input?.args || input?.tool_input || input);
+      if (!/agent-browser/.test(command)) return;
+      const event = JSON.stringify({ command, cwd: directory });
+      try {
+        await $`echo ${event} | node ${cli} hook`.quiet();
+      } catch (error) {
+        await log(client, "warn", `Replay rrweb recorder: ${formatError(error)}`);
       }
     },
 
     event: async ({ event }) => {
-      if (event.type === "session.idle") {
-        await closeLingeringSessions($, client);
-        await uploadPending($, client);
+      if (event.type !== "session.idle") return;
+      try {
+        await $`node ${cli} stop`.quiet().cwd(directory);
+        await log(client, "info", "Closed this directory's Replay browsers and uploaded their recordings");
+      } catch (error) {
+        await log(client, "warn", `Replay rrweb recorder: ${formatError(error)}`);
       }
     },
   };

@@ -1,17 +1,18 @@
 #!/usr/bin/env node
-// Local relay for the replayio plugin's inline Replay players (hooks/register.tsx).
+// The rrweb relay every Replay plugin shares: one daemon per machine, started by rrweb.mjs.
 //
-// - Receives tracer packets (rrweb events + Replay simulation packets) from the
-//   playwright-cli daemon via POST /ingest/:session and stores them per
-//   recording, in memory and as NDJSON on disk so players survive restarts.
-// - Serves player.html, which plays a recording with rrweb's Replayer, either
-//   live (SSE) or from the start.
-// - Renders players in a headless Chrome and screencasts them to PNG files the
-//   mod shows inline in the transcript with an <Image>. GET /frames long-polls
-//   for new frames.
+// - Joins each agent-browser session over CDP and injects the rrweb recorder (tracer.js) into
+//   every document, so page CSP never blocks it.
+// - Appends the stream to <dir>/recordings/<stamp>-<session>-<id>.rrweb as it arrives.
+// - Serves player.html, which plays a recording with rrweb's Replayer, either live (SSE) or
+//   from the start, and any .rrweb already on disk.
+// - Renders players in a headless Chrome and screencasts them to PNG files a host can draw
+//   inline (the Claude Code mod's <Image>). GET /frames long-polls for new frames.
+//
+// .rrweb files hold one JSON value per line. A line whose `type` is a number is an rrweb event,
+// verbatim; one whose `type` is a string is the relay's own (header, feed, replay, end).
 //
 // Zero dependencies: Node >= 22 (global fetch + WebSocket).
-// Prints one JSON line on stdout once listening: { port, token, dataDir }.
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -24,21 +25,40 @@ import { fileURLToPath } from 'node:url'
 
 /** live/: this script, the player pages, tracer.js and vendor/. */
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = process.env.REPLAY_LIVE_DIR || path.join(os.homedir(), '.claude', 'replayio-live')
+const DATA_DIR = process.env.REPLAY_RRWEB_DIR || path.join(os.homedir(), '.replay', 'rrweb')
 const REC_DIR = path.join(DATA_DIR, 'recordings')
 const FRAME_DIR = path.join(DATA_DIR, 'frames')
-const INJECT_DIR = path.join(DATA_DIR, 'inject')
-const IMAGE_DIR = path.join(DATA_DIR, 'images')
-const TOKEN = process.env.REPLAY_LIVE_TOKEN || crypto.randomUUID()
+/** Where this daemon says it is listening: `{ pid, port, token, version, dataDir }`. */
+const RELAY_FILE = path.join(DATA_DIR, 'relay.json')
+/** Bumped when a running daemon must make way for a newer plugin's. */
+const RELAY_VERSION = 2
+const TOKEN = crypto.randomUUID()
 const PLAYER_W = 1280
 const PLAYER_H = 800
 const MAX_FPS = 12
 const LONG_POLL_MS = 20_000
 
-for (const dir of [REC_DIR, FRAME_DIR, INJECT_DIR, IMAGE_DIR]) fs.mkdirSync(dir, { recursive: true })
+for (const dir of [REC_DIR, FRAME_DIR]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+// Recordings hold what the pages showed: only this user reads them.
+fs.chmodSync(DATA_DIR, 0o700)
+fs.chmodSync(REC_DIR, 0o700)
+migrateLegacy()
 
-const log = (...args) => process.stderr.write(`[replayio-live relay] ${args.join(' ')}\n`)
+const log = (...args) => process.stderr.write(`[replayio rrweb relay] ${args.join(' ')}\n`)
 const safeId = id => String(id).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
+const stampOf = ms => new Date(ms || Date.now()).toISOString().replace(/[:]/g, '-').replace(/\..+$/, '')
+
+/** Moves what an earlier version kept under ~/.claude/replayio-live: the line format is still read. */
+function migrateLegacy() {
+  if (process.env.REPLAY_RRWEB_DIR) return
+  const legacy = path.join(os.homedir(), '.claude', 'replayio-live')
+  const move = (from, to) => { try { fs.renameSync(from, to) } catch {} }
+  for (const [dir, into, rename] of [['recordings', REC_DIR, n => n.replace(/\.ndjson$/, '.rrweb')], ['frames', FRAME_DIR, n => n]]) {
+    let names = []
+    try { names = fs.readdirSync(path.join(legacy, dir)) } catch {}
+    for (const name of names) move(path.join(legacy, dir, name), path.join(into, rename(name)))
+  }
+}
 
 // ---------------------------------------------------------------- recordings
 
@@ -55,34 +75,43 @@ const bySession = new Map()
  */
 
 function newRecording(id, session, source, cwd = process.cwd()) {
+  const startedAt = Date.now()
+  const file = path.join(REC_DIR, `${stampOf(startedAt)}-${safeId(session)}-${safeId(id)}.rrweb`)
   const rec = {
-    id, session, source, cwd, status: 'live', url: null, startedAt: Date.now(), endedAt: null,
-    events: [], feed: [], activePage: null, clients: new Set(), meta: null,
-    file: path.join(REC_DIR, `${safeId(id)}.ndjson`),
+    id, session, source, cwd, status: 'live', url: null, startedAt, endedAt: null,
+    events: [], feed: [], activePage: null, clients: new Set(), meta: null, file,
+    out: fs.createWriteStream(file, { flags: 'a', mode: 0o600 }),
   }
+  rec.out.on('error', err => log('append failed', err.message))
   recordings.set(id, rec)
-  appendLine(rec, { type: 'header', id, session, source, cwd, startedAt: rec.startedAt })
+  appendLine(rec, { type: 'header', id, session, source, cwd, startedAt })
   return rec
 }
 
 function appendLine(rec, obj) {
-  fs.appendFile(rec.file, JSON.stringify(obj) + '\n', err => err && log('append failed', err.message))
+  if (rec.out) rec.out.write(JSON.stringify(obj) + '\n')
+  else fs.appendFile(rec.file, JSON.stringify(obj) + '\n', err => err && log('append failed', err.message))
 }
 
-function loadRecording(id) {
-  const existing = recordings.get(id)
-  if (existing) return existing
-  const file = path.join(REC_DIR, `${safeId(id)}.ndjson`)
-  if (!fs.existsSync(file)) return null
-  const rec = {
-    id, session: id, source: 'disk', status: 'ended', url: null, startedAt: 0, endedAt: null,
-    events: [], feed: [], activePage: null, clients: new Set(), meta: null, file,
+/** The file holding recording `id`: `<stamp>-<session>-<id>.rrweb`, or `<id>.rrweb` from before. */
+function fileOf(id) {
+  const safe = safeId(id)
+  const name = fs.readdirSync(REC_DIR).find(n => n === `${safe}.rrweb` || n.endsWith(`-${safe}.rrweb`))
+  return name ? path.join(REC_DIR, name) : null
+}
+
+function parseRecording(rec, text) {
+  // Someone else's rrweb export: a plain JSON array of events.
+  if (text.trimStart().startsWith('[')) {
+    applyEvents(rec, JSON.parse(text), false)
+    return
   }
-  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+  for (const line of text.split('\n')) {
     if (!line) continue
     try {
       const obj = JSON.parse(line)
-      if (obj.type === 'header') Object.assign(rec, { session: obj.session, source: obj.source, startedAt: obj.startedAt, cwd: obj.cwd })
+      if (typeof obj.type === 'number') applyEvents(rec, [obj], false)
+      else if (obj.type === 'header') Object.assign(rec, { session: obj.session, source: obj.source, startedAt: obj.startedAt, cwd: obj.cwd })
       else if (obj.type === 'events') applyEvents(rec, obj.events, false)
       else if (obj.type === 'feed') rec.feed.push(...obj.items)
       else if (obj.type === 'end') rec.endedAt = obj.endedAt
@@ -90,6 +119,18 @@ function loadRecording(id) {
       else if (obj.type === 'reset') rec.events = []
     } catch {}
   }
+}
+
+function loadRecording(id, file = fileOf(id)) {
+  const existing = recordings.get(id)
+  if (existing) return existing
+  if (!file || !fs.existsSync(file)) return null
+  const rec = {
+    id, session: id, source: 'disk', status: 'ended', url: null, startedAt: 0, endedAt: null,
+    events: [], feed: [], activePage: null, clients: new Set(), meta: null, file,
+  }
+  parseRecording(rec, fs.readFileSync(file, 'utf8'))
+  if (!rec.startedAt) rec.startedAt = rec.events[0]?.timestamp ?? fs.statSync(file).mtimeMs
   recordings.set(id, rec)
   return rec
 }
@@ -102,7 +143,7 @@ function applyEvents(rec, events, persist) {
       if (ev.data.href) rec.url = ev.data.href
     }
   }
-  if (persist) appendLine(rec, { type: 'events', events })
+  if (persist) for (const ev of events) appendLine(rec, ev)
 }
 
 function broadcast(rec, event, data) {
@@ -163,8 +204,13 @@ function endRecording(rec) {
   if (bySession.get(rec.session) === rec.id) bySession.delete(rec.session)
   detachCdp(rec.session)
   appendLine(rec, { type: 'end', endedAt: rec.endedAt })
+  rec.out?.end()
+  rec.out = null
   broadcast(rec, 'status', { status: 'ended' })
   bump(rec.id)
+  // Park an inline player on the finished recording's last moment.
+  const live = players.get(rec.id)
+  if (live?.mode === 'live') setTimeout(() => { if (players.get(rec.id) === live) void control(rec.id, 'seek', durationOf(rec.events)).catch(() => {}) }, 1500)
   // Replay Chromium finishes writing its recording as the browser closes.
   setTimeout(() => void linkReplay(rec).catch(err => log('replay link failed', err.message)), 3000)
 }
@@ -227,7 +273,7 @@ function startLogin() {
 }
 
 /** Uploads a session's Replay recordings that are not uploaded yet. */
-async function uploadReplay(rec) {
+async function uploadReplay(rec, { login: signIn = true } = {}) {
   const linked = rec.replay?.length ? rec.replay : await linkReplay(rec)
   const pending = linked.filter(r => r.uploadStatus !== 'uploaded' && r.recordingStatus !== 'recording').map(r => r.id)
   if (pending.length === 0 && linked.length === 0) throw new Error('no Replay recording was made for this session (was it Replay Chromium with RECORD_ALL_CONTENT=1?)')
@@ -236,8 +282,10 @@ async function uploadReplay(rec) {
     // waits on it; a button press must fail fast instead.
     const who = await replayio(['whoami'], 30_000).catch(err => err.message)
     if (!process.env.REPLAY_API_KEY && /not authenticated|log in/i.test(who)) {
-      startLogin()
-      const err = new Error('Sign in to Replay in the browser tab that just opened, then press Upload again.')
+      if (signIn) startLogin()
+      const err = new Error(signIn
+        ? 'Sign in to Replay in the browser tab that just opened, then press Upload again.'
+        : 'Not signed in to Replay: the recording stays local until `replayio login`.')
       err.needsLogin = true
       throw err
     }
@@ -254,46 +302,61 @@ function describe(rec) {
   return {
     id: rec.id, session: rec.session, status: rec.status, url: rec.url,
     startedAt: rec.startedAt, endedAt: rec.endedAt, eventCount: rec.events.length,
-    durationMs: durationOf(rec.events), cwd: rec.cwd ?? null, replay: rec.replay ?? [],
+    durationMs: durationOf(rec.events), cwd: rec.cwd ?? null, file: rec.file, replay: rec.replay ?? [],
     meta: rec.meta, lastError: [...rec.feed].reverse().find(f => f.kind === 'error')?.text ?? null,
   }
 }
 
-/** Every recording on disk, newest first, read without keeping their events. */
+const summaries = new Map()
+
+/** A recording on disk, described without keeping its events; cached until the file changes. */
+function summarize(file, fallbackId) {
+  const { mtimeMs } = fs.statSync(file)
+  const cached = summaries.get(file)
+  if (cached?.mtimeMs === mtimeMs) return cached.summary
+  const rec = { id: fallbackId, session: fallbackId, status: 'ended', url: null, startedAt: 0, endedAt: null,
+    events: [], feed: [], meta: null, file, clients: new Set() }
+  const text = fs.readFileSync(file, 'utf8')
+  try { parseRecording(rec, text) } catch {}
+  if (!rec.startedAt) rec.startedAt = rec.events[0]?.timestamp ?? mtimeMs
+  try { const head = JSON.parse(text.split('\n', 1)[0]); if (head?.type === 'header') rec.id = head.id } catch {}
+  const summary = describe(rec)
+  summaries.set(file, { mtimeMs, summary })
+  return summary
+}
+
+/** Every recording on disk, newest first. */
 function listAll() {
   const out = []
   for (const name of fs.readdirSync(REC_DIR)) {
-    if (!name.endsWith('.ndjson')) continue
-    const loaded = recordings.get(name.slice(0, -'.ndjson'.length))
-    if (loaded) { out.push(describe(loaded)); continue }
-    const summary = { id: name.slice(0, -'.ndjson'.length), session: null, status: 'ended', url: null, startedAt: 0,
-      endedAt: null, eventCount: 0, durationMs: 0, cwd: null, meta: null, lastError: null, replay: [] }
-    let first = null
-    let last = null
-    for (const line of fs.readFileSync(path.join(REC_DIR, name), 'utf8').split('\n')) {
-      if (!line) continue
-      try {
-        const obj = JSON.parse(line)
-        if (obj.type === 'header') Object.assign(summary, { id: obj.id, session: obj.session, startedAt: obj.startedAt, cwd: obj.cwd ?? null })
-        else if (obj.type === 'events') {
-          for (const ev of obj.events) {
-            first ??= ev.timestamp
-            last = ev.timestamp
-            if (ev.type === 4 && ev.data?.href) summary.url = ev.data.href
-          }
-          summary.eventCount += obj.events.length
-        } else if (obj.type === 'end') summary.endedAt = obj.endedAt
-        else if (obj.type === 'replay') summary.replay = obj.recordings
-        else if (obj.type === 'feed') {
-          const err = obj.items.filter(i => i.kind === 'error').pop()
-          if (err) summary.lastError = err.text
-        }
-      } catch {}
-    }
-    summary.durationMs = first !== null && last !== null ? last - first + 1 : 0
-    out.push(summary)
+    if (!name.endsWith('.rrweb')) continue
+    const summary = summarize(path.join(REC_DIR, name), name.slice(0, -'.rrweb'.length))
+    const loaded = recordings.get(summary.id)
+    out.push(loaded ? describe(loaded) : summary)
   }
   return out.sort((a, b) => b.startedAt - a.startedAt)
+}
+
+/**
+ * What a person or an agent names a recording by: `latest`, a session, an id, a file name, or
+ * the path of any .rrweb file (someone else's rrweb export included).
+ */
+function resolveRef(ref) {
+  const wanted = String(ref || 'latest').trim()
+  if (wanted.includes('/') || /\.rrweb(\.json)?$|\.json$/.test(wanted)) {
+    const full = path.resolve(wanted.startsWith('~/') ? path.join(os.homedir(), wanted.slice(2)) : wanted)
+    if (fs.existsSync(full)) {
+      const known = listAll().find(r => r.file === full)
+      if (known) return loadRecording(known.id)
+      return loadRecording(`file-${crypto.createHash('sha1').update(full).digest('hex').slice(0, 12)}`, full)
+    }
+  }
+  const all = listAll()
+  const found = wanted === 'latest'
+    ? all.find(r => r.status === 'live') ?? all[0]
+    : all.find(r => r.id === wanted || path.basename(r.file) === wanted || path.basename(r.file, '.rrweb') === wanted)
+      ?? all.find(r => r.session === wanted)
+  return found ? loadRecording(found.id, found.file) : null
 }
 
 // ------------------------------------------------------------------- tracer
@@ -304,48 +367,6 @@ const TRACER = path.join(HERE, 'tracer.js')
 function tracerSource() {
   if (!fs.existsSync(TRACER)) throw new Error(`missing ${TRACER}: run npm install && npm run build in ${HERE}`)
   return fs.readFileSync(TRACER, 'utf8')
-}
-
-/**
- * A `playwright-cli run-code --filename` script: exposes a binding that relays
- * packets from the daemon (so page CSP never blocks it), adds the tracer as an
- * init script for every later document, and evaluates it in the open pages.
- */
-function writeInjectScript(session) {
-  const ingestUrl = `http://127.0.0.1:${server.address().port}/ingest/${encodeURIComponent(session)}?token=${TOKEN}`
-  const src = tracerSource()
-  const script = `async page => {
-  const ctx = page.context();
-  const SRC = ${JSON.stringify(src)};
-  ctx.__replayClaudeIngest = ${JSON.stringify(ingestUrl)};
-  if (!ctx.__replayClaudeLive) {
-    ctx.__replayClaudeLive = true;
-    const ids = new WeakMap();
-    let next = 0;
-    try {
-      await ctx.exposeBinding('__replayClaudeEmit', async (source, data) => {
-        let id = ids.get(source.page);
-        if (!id) { id = ++next; ids.set(source.page, id); }
-        try {
-          await fetch(ctx.__replayClaudeIngest, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ page: id, url: source.page.url(), packets: JSON.parse(data) }),
-          });
-        } catch {}
-      });
-    } catch (err) {
-      if (!/already registered/i.test(String(err))) throw err;
-    }
-    await ctx.addInitScript({ content: SRC });
-  }
-  for (const p of ctx.pages()) await p.evaluate(SRC).catch(() => {});
-  return 'Replay live tracer attached';
-}
-`
-  const file = path.join(INJECT_DIR, `${safeId(session)}.js`)
-  fs.writeFileSync(file, script)
-  return file
 }
 
 // ------------------------------------------------------- headless renderer
@@ -510,12 +531,18 @@ async function attachCdp(session, wsUrl) {
   const cdp = new Chrome()
   await cdp.connect(wsUrl)
   attachments.set(session, cdp)
-  cdp.ws.addEventListener('close', () => { if (attachments.get(session) === cdp) attachments.delete(session) })
+  // However the browser went away (a close, a crash, a hook), its recording is over.
+  cdp.ws.addEventListener('close', () => {
+    if (attachments.get(session) !== cdp) return
+    attachments.delete(session)
+    const rec = recordings.get(bySession.get(session))
+    if (rec) endRecording(rec)
+  })
   const source = tracerSource()
   const known = new Set()
   let pages = 0
   const attachPage = async info => {
-    if (known.has(info.targetId) || info.type !== 'page' || /^(devtools|chrome-extension):/.test(info.url ?? '')) return
+    if (known.has(info.targetId) || info.type !== 'page' || /^(devtools|chrome-extension|chrome-untrusted):/.test(info.url ?? '')) return
     known.add(info.targetId)
     const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: info.targetId, flatten: true })
     const page = ++pages
@@ -708,171 +735,9 @@ function framesSnapshot() {
   const out = {}
   for (const [id, f] of frames) {
     const rec = recordings.get(id)
-    out[id] = { ...f, recording: rec ? describe(rec) : null, export: exportJobs.get(id) ?? null }
+    out[id] = { ...f, recording: rec ? describe(rec) : null }
   }
   return { version, frames: out }
-}
-
-// ------------------------------------------------------------------- export
-
-/** recording id -> { status, progress, files, error } */
-const exportJobs = new Map()
-const EXPORT_FPS = 15
-const IDLE_GAP_MS = 2000
-const IDLE_KEPT_MS = 800
-
-const stampOf = ms => new Date(ms || Date.now()).toISOString().replace(/[:]/g, '-').replace(/\..+$/, '')
-
-/**
- * Video time -> recording time, with idle stretches (gaps between events over
- * IDLE_GAP_MS) fast-forwarded into IDLE_KEPT_MS, as rrweb's skipInactive does.
- */
-function timeline(times) {
-  const knots = [[0, 0]]
-  let video = 0
-  for (let i = 1; i < times.length; i++) {
-    const gap = times[i] - times[i - 1]
-    if (gap <= 0) continue
-    video += gap > IDLE_GAP_MS ? IDLE_KEPT_MS : gap
-    knots.push([video, times[i]])
-  }
-  const end = knots[knots.length - 1]
-  // Hold the last frame a moment, 1ms past the last event so it is applied.
-  knots.push([video + 600, end[1] + 1])
-  return {
-    duration: video + 600,
-    at(v) {
-      let lo = 0
-      let hi = knots.length - 1
-      while (lo < hi - 1) {
-        const mid = (lo + hi) >> 1
-        if (knots[mid][0] <= v) lo = mid
-        else hi = mid
-      }
-      const [v0, t0] = knots[lo]
-      const [v1, t1] = knots[hi]
-      return v1 === v0 ? t0 : t0 + ((v - v0) / (v1 - v0)) * (t1 - t0)
-    },
-  }
-}
-
-function startExport(id, { outDir, formats = ['mp4', 'rrweb'] }) {
-  const running = exportJobs.get(id)
-  if (running?.status === 'running') return running
-  const rec = loadRecording(id)
-  if (!rec) throw new Error(`no recording ${id}`)
-  const dir = path.resolve(outDir || path.join(rec.cwd || process.cwd(), '.replay', 'live'))
-  const base = path.join(dir, `${stampOf(rec.startedAt)}-${safeId(rec.session)}`)
-  const job = { status: 'running', progress: 0, files: [], error: null }
-  exportJobs.set(id, job)
-  bump(id)
-  void (async () => {
-    try {
-      fs.mkdirSync(dir, { recursive: true })
-      if (formats.includes('rrweb')) {
-        // A plain rrweb event array: loads in rrweb-player or any Replayer.
-        fs.writeFileSync(`${base}.rrweb.json`, JSON.stringify(rec.events))
-        job.files.push(`${base}.rrweb.json`)
-      }
-      if (formats.includes('mp4')) {
-        await exportMp4(rec, `${base}.mp4`, p => { job.progress = p; bump(id) })
-        job.files.push(`${base}.mp4`)
-      }
-      job.status = 'done'
-      job.progress = 1
-    } catch (err) {
-      job.status = 'failed'
-      job.error = String(err.message ?? err)
-      log('export failed', job.error)
-    }
-    bump(id)
-  })()
-  return job
-}
-
-/** Renders the recording frame by frame (seek, paint, screenshot) into ffmpeg. */
-async function exportMp4(rec, file, onProgress) {
-  if (rec.events.length < 2) throw new Error('nothing recorded to export')
-  const { width, height } = playerSize(rec)
-  const port = server.address().port
-  const url = `http://127.0.0.1:${port}/player/${encodeURIComponent(rec.id)}?mode=export&token=${TOKEN}&chrome=0`
-  const target = await openTarget(url, width, height, () => {})
-  let ffmpeg
-  try {
-    await waitReady(target.sessionId)
-    const map = timeline(await evaluate(target.sessionId, '__ctl.eventTimes()'))
-    const count = Math.max(1, Math.ceil((map.duration / 1000) * EXPORT_FPS) + 1)
-    ffmpeg = spawn('ffmpeg', [
-      '-y', '-loglevel', 'error', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-framerate', String(EXPORT_FPS), '-i', '-',
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-movflags', '+faststart', file,
-    ], { stdio: ['pipe', 'ignore', 'pipe'] })
-    let ffErr = ''
-    ffmpeg.stderr.on('data', c => { ffErr += c })
-    const exited = new Promise((resolve, reject) => {
-      ffmpeg.on('error', err => reject(new Error(`ffmpeg: ${err.message}`)))
-      ffmpeg.on('exit', code => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${ffErr.slice(-300)}`))))
-    })
-    exited.catch(() => {})
-    for (let k = 0; k < count; k++) {
-      await evaluate(target.sessionId, `__ctl.frameAt(${map.at((k * 1000) / EXPORT_FPS)})`)
-      const { data } = await chrome.send('Page.captureScreenshot', { format: 'jpeg', quality: 85 }, target.sessionId)
-      if (!ffmpeg.stdin.write(Buffer.from(data, 'base64'))) await new Promise(r => ffmpeg.stdin.once('drain', r))
-      if (k % 10 === 0) onProgress(k / count)
-    }
-    ffmpeg.stdin.end()
-    await exited
-  } finally {
-    if (ffmpeg && ffmpeg.exitCode === null) ffmpeg.stdin.end()
-    await closeTarget(target)
-  }
-}
-
-// ------------------------------------------------------------------- images
-
-const converting = new Map()
-
-/**
- * A local PNG of a remote image, for the terminal's Image (which draws PNG
- * files): a PNG is saved as is, anything else is drawn in the renderer and
- * screenshotted. Cached by URL.
- */
-function imageAsPng(url) {
-  const file = path.join(IMAGE_DIR, `${crypto.createHash('sha1').update(url).digest('hex')}.png`)
-  if (fs.existsSync(file)) return Promise.resolve(file)
-  if (converting.has(url)) return converting.get(url)
-  const job = (async () => {
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`image fetch ${res.status}`)
-    const bytes = Buffer.from(await res.arrayBuffer())
-    const type = res.headers.get('content-type') ?? 'image/jpeg'
-    if (type.includes('png')) {
-      fs.writeFileSync(file, bytes)
-      return file
-    }
-    const html = `<html><body style="margin:0;background:#000"><img id=i src="data:${type};base64,${bytes.toString('base64')}"></body></html>`
-    const target = await openTarget(`data:text/html;base64,${Buffer.from(html).toString('base64')}`, 1280, 800, () => {})
-    try {
-      let size = null
-      for (let i = 0; i < 50 && !size; i++) {
-        size = await evaluate(target.sessionId, 'document.getElementById("i") && document.getElementById("i").complete && document.getElementById("i").naturalWidth ? [document.getElementById("i").naturalWidth, document.getElementById("i").naturalHeight] : null').catch(() => null)
-        if (!size) await new Promise(r => setTimeout(r, 100))
-      }
-      if (!size) throw new Error('image did not load')
-      const scale = Math.min(1, 1600 / size[0])
-      const width = Math.round(size[0] * scale)
-      const height = Math.round(size[1] * scale)
-      await chrome.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, target.sessionId)
-      await evaluate(target.sessionId, `(document.getElementById("i").style.width = "${width}px", true)`)
-      const { data } = await chrome.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height, scale: 1 } }, target.sessionId)
-      fs.writeFileSync(file, Buffer.from(data, 'base64'))
-      return file
-    } finally {
-      await closeTarget(target)
-    }
-  })()
-  converting.set(url, job)
-  job.finally(() => converting.delete(url)).catch(() => {})
-  return job
 }
 
 // --------------------------------------------------------------------- http
@@ -901,49 +766,48 @@ const server = http.createServer(async (req, res) => {
 
     const token = url.searchParams.get('token') ?? req.headers['x-replay-live-token']
     if (token !== TOKEN) return send(res, 403, { error: 'bad token' })
+    touched = Date.now()
 
-    // POST /recordings { id, session, source? } -> start a recording for a session
+    if (req.method === 'GET' && parts[0] === 'health') return send(res, 200, { version: RELAY_VERSION, live: bySession.size })
+
+    // POST /shutdown { ifIdle? } -> make way for a newer daemon
+    if (req.method === 'POST' && parts[0] === 'shutdown') {
+      const { ifIdle } = await readJson(req)
+      if (ifIdle && bySession.size > 0) return send(res, 409, { error: 'recordings are live' })
+      send(res, 200, { stopping: true })
+      return setTimeout(shutdown, 50)
+    }
+
+    // GET /resolve?ref=latest|session|id|path -> the recording it names
+    if (req.method === 'GET' && parts[0] === 'resolve') {
+      const rec = resolveRef(url.searchParams.get('ref'))
+      return rec ? send(res, 200, { ...describe(rec), viewerUrl: viewerUrl(rec.id) }) : send(res, 404, { error: `no recording matches ${url.searchParams.get('ref') ?? 'latest'}` })
+    }
+
+    // POST /recordings { id, session, cdp, cwd? } -> record a browser; a session already recorded keeps its recording
     if (req.method === 'POST' && parts[0] === 'recordings' && parts.length === 1) {
-      const { id, session, source = 'playwright-cli', cwd, cdp } = await readJson(req)
-      if (!id || !session) return send(res, 400, { error: 'id and session required' })
-      const previous = bySession.get(session)
-      if (previous && previous !== id) {
-        const prev = recordings.get(previous)
-        if (prev) endRecording(prev)
-      }
-      const rec = recordings.get(id) ?? newRecording(id, session, source, cwd || undefined)
-      rec.status = 'live'
+      const { id, session, source = 'agent-browser', cwd, cdp } = await readJson(req)
+      if (!id || !session || !cdp) return send(res, 400, { error: 'id, session and cdp required' })
+      const held = recordings.get(bySession.get(session))
+      if (held && attachments.has(session)) return send(res, 200, { recording: describe(held), viewerUrl: viewerUrl(held.id) })
+      if (held) endRecording(held)
+      const rec = newRecording(id, session, source, cwd || undefined)
       bySession.set(session, id)
-      // `cdp`: a browser the relay joins itself (agent-browser) instead of one playwright-cli injects.
-      if (cdp) {
-        try {
-          await attachCdp(session, cdp)
-        } catch (err) {
-          endRecording(rec)
-          return send(res, 502, { error: `could not attach to the browser: ${err.message}` })
-        }
+      try {
+        await attachCdp(session, cdp)
+      } catch (err) {
+        endRecording(rec)
+        return send(res, 502, { error: `could not attach to the browser: ${err.message}` })
       }
-      const injectPath = cdp ? null : writeInjectScript(session)
-      return send(res, 200, { recording: describe(rec), injectPath, viewerUrl: viewerUrl(id) })
+      return send(res, 200, { recording: describe(rec), viewerUrl: viewerUrl(id) })
     }
 
     // POST /sessions/:session/end
     if (req.method === 'POST' && parts[0] === 'sessions' && parts[2] === 'end') {
       const id = bySession.get(parts[1])
       const rec = id && recordings.get(id)
-      if (rec) {
-        endRecording(rec)
-        const live = players.get(id)
-        // Park the inline player on the finished recording's last moment.
-        if (live?.mode === 'live') setTimeout(() => { if (players.get(id) === live) void control(id, 'seek', durationOf(rec.events)) }, 1500)
-      }
+      if (rec) endRecording(rec)
       return send(res, 200, { ended: rec ? rec.id : null })
-    }
-
-    // POST /ingest/:session { page, url, packets }
-    if (req.method === 'POST' && parts[0] === 'ingest') {
-      const { page = 0, url: pageUrl, packets = [] } = await readJson(req)
-      return send(res, 200, { accepted: ingest(parts[1], page, pageUrl, packets) })
     }
 
     // GET /recordings[?all=1] -> this relay's recordings, or every one on disk
@@ -958,6 +822,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET' && parts[2] === undefined) return send(res, 200, describe(rec))
       if (req.method === 'GET' && parts[2] === 'events') return send(res, 200, { recording: describe(rec), events: rec.events, feed: rec.feed })
       if (req.method === 'GET' && parts[2] === 'rrweb.json') {
+        // A plain rrweb event array, for rrweb-player or any other Replayer.
         res.writeHead(200, { 'content-type': 'application/json', 'content-disposition': `attachment; filename="${stampOf(rec.startedAt)}-${safeId(rec.session)}.rrweb.json"` })
         return res.end(JSON.stringify(rec.events))
       }
@@ -982,38 +847,14 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, framesSnapshot().frames[rec.id] ?? null)
       }
 
-      // POST /recordings/:id/export { outDir?, formats? } -> saves .mp4 + .rrweb.json
-      if (req.method === 'POST' && parts[2] === 'export') {
-        return send(res, 200, startExport(rec.id, await readJson(req)))
-      }
-      if (req.method === 'GET' && parts[2] === 'export') return send(res, 200, exportJobs.get(rec.id) ?? null)
-
       // GET /recordings/:id/replay -> re-match its Replay recordings; POST .../replay/upload uploads them
       if (req.method === 'GET' && parts[2] === 'replay') return send(res, 200, await linkReplay(rec))
-      if (req.method === 'POST' && parts[2] === 'replay' && parts[3] === 'upload') return send(res, 200, await uploadReplay(rec))
+      if (req.method === 'POST' && parts[2] === 'replay' && parts[3] === 'upload') return send(res, 200, await uploadReplay(rec, await readJson(req)))
     }
 
     // GET /player/:id -> the page the headless renderer (or a person) loads
     if (req.method === 'GET' && parts[0] === 'player' && parts[1]) {
       return send(res, 200, fs.readFileSync(path.join(HERE, 'player.html'), 'utf8'), 'text/html; charset=utf-8')
-    }
-
-    // GET /library -> every saved recording
-    if (req.method === 'GET' && parts[0] === 'library') {
-      return send(res, 200, fs.readFileSync(path.join(HERE, 'library.html'), 'utf8'), 'text/html; charset=utf-8')
-    }
-
-    // GET /image?url=... -> { file, width, height }: a local PNG of a remote image (Replay screenshots)
-    if (req.method === 'GET' && parts[0] === 'image') {
-      const remote = url.searchParams.get('url') ?? ''
-      if (!/^https:\/\/[a-z0-9.-]*replay\.io\//.test(remote)) return send(res, 400, { error: 'only replay.io images' })
-      const file = await imageAsPng(remote)
-      // A PNG's IHDR holds its size at bytes 16-23.
-      const head = Buffer.alloc(24)
-      const fd = fs.openSync(file, 'r')
-      fs.readSync(fd, head, 0, 24, 0)
-      fs.closeSync(fd)
-      return send(res, 200, { file, width: head.readUInt32BE(16), height: head.readUInt32BE(20) })
     }
 
     // GET /frames?version=N -> long-poll for frame changes
@@ -1041,17 +882,39 @@ function viewerUrl(id) {
   return `http://127.0.0.1:${server.address().port}/player/${encodeURIComponent(id)}?mode=auto&chrome=1&token=${TOKEN}`
 }
 
-server.listen(Number(process.env.REPLAY_LIVE_PORT ?? 0), '127.0.0.1', () => {
-  process.stdout.write(JSON.stringify({ port: server.address().port, token: TOKEN, dataDir: DATA_DIR }) + '\n')
-})
+// ------------------------------------------------------------------ the daemon
 
-const shutdown = () => {
+let touched = Date.now()
+const IDLE_CHROME_MS = 10 * 60_000
+const IDLE_EXIT_MS = 60 * 60_000
+let shuttingDown = false
+
+function shutdown() {
+  if (shuttingDown) return
+  shuttingDown = true
+  for (const rec of recordings.values()) if (rec.status === 'live') endRecording(rec)
   chrome.stop()
-  process.exit(0)
+  // Only ever the file naming this daemon: a successor may already have written its own.
+  try { if (JSON.parse(fs.readFileSync(RELAY_FILE, 'utf8')).pid === process.pid) fs.unlinkSync(RELAY_FILE) } catch {}
+  setTimeout(() => process.exit(0), 100)
 }
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
-// The mod's spawn kills us when it lets go; if Claude Code itself dies we are
-// reparented, so exit rather than linger with a headless Chrome.
-const parent = process.ppid
-setInterval(() => { if (process.ppid !== parent) shutdown() }, 5_000).unref()
+
+setInterval(() => {
+  const idle = Date.now() - touched
+  if (players.size === 0 && idle > IDLE_CHROME_MS && chrome.ready) { chrome.stop() }
+  if (bySession.size === 0 && players.size === 0 && waiters.size === 0 && idle > IDLE_EXIT_MS) shutdown()
+}, 60_000).unref()
+
+server.listen(0, '127.0.0.1', () => {
+  const info = { pid: process.pid, port: server.address().port, token: TOKEN, version: RELAY_VERSION, dataDir: DATA_DIR, recordingsDir: REC_DIR }
+  // Two daemons racing to start: the first to write the file is the one, the other leaves.
+  try {
+    fs.writeFileSync(RELAY_FILE, JSON.stringify(info) + '\n', { flag: 'wx', mode: 0o600 })
+  } catch {
+    log('another relay already owns', RELAY_FILE)
+    process.exit(0)
+  }
+  log(`listening on ${info.port}`)
+})

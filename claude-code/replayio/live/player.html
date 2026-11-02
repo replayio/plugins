@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Replay recording</title>
+<title>Replay rrweb recording</title>
 <link rel="stylesheet" href="/vendor/rrweb.min.css">
 <style>
   html, body { margin: 0; height: 100%; background: #101014; color: #d8d8de; overflow: hidden;
@@ -39,11 +39,10 @@
     border-radius: 6px; background: rgba(120, 20, 40, .9); color: #fff; font: 12px ui-monospace, Menlo, monospace;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   body.chrome.seekable #error { bottom: 55px; }
-  body.export #error { display: none !important; }
 </style>
 </head>
 <body>
-<div id="bar"><strong>Replay</strong><a id="library" href="#">← Library</a><span id="url"></span></div>
+<div id="bar"><strong>Replay</strong><span id="url"></span></div>
 <div id="stage"><div id="root"></div><div id="empty">Waiting for the browser…</div></div>
 <div id="controls">
   <button id="toggle" title="Space">▶</button><button id="back" title="←">−10s</button><button id="fwd" title="→">+10s</button>
@@ -60,11 +59,8 @@
   const id = decodeURIComponent(location.pathname.split('/')[2])
   const token = params.get('token')
   const withChrome = params.get('chrome') === '1'
-  const isExport = params.get('mode') === 'export'
   document.body.classList.add(withChrome ? 'chrome' : 'still')
-  if (isExport) document.body.classList.add('export')
   const api = p => `/recordings/${encodeURIComponent(id)}${p}?token=${encodeURIComponent(token)}`
-  document.getElementById('library').href = `/library?token=${encodeURIComponent(token)}`
   const notify = what => { try { window.__playerEvent && window.__playerEvent(what) } catch {} }
 
   const stage = document.getElementById('stage')
@@ -100,7 +96,7 @@
 
   const config = {
     root, showWarning: false, showDebug: false, UNSAFE_replayCanvas: true,
-    mouseTail: isExport ? false : { strokeStyle: '#F02D5E', lineWidth: 3, duration: 600 },
+    mouseTail: { strokeStyle: '#F02D5E', lineWidth: 3, duration: 600 },
   }
 
   let replayer = null
@@ -156,13 +152,6 @@
     },
     seekBy(ms) { ctl.seek(now() + ms) },
     speed(x) { replayer && replayer.setConfig({ speed: x }) },
-    /** For export: jump to `ms` paused, resolve once painted. */
-    frameAt(ms) {
-      replayer.pause(Math.max(0, Math.min(total, ms)))
-      return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))
-    },
-    /** Times of the recording's events, from its start, for the export's idle trimming. */
-    eventTimes() { return boot.events.map(e => e.timestamp - boot.events[0].timestamp) },
     state() { return { t: Math.round(now()), total: Math.round(total), paused: !isPlaying(), finished } },
   }
   window.__ctl = ctl
@@ -183,7 +172,7 @@
     if (boot.events.length < 2) { empty.style.display = 'flex'; empty.textContent = 'No events recorded'; notify('finished'); return }
     document.body.classList.add('seekable')
     fit()
-    const r = new rrweb.Replayer(boot.events, { ...config, skipInactive: !isExport, speed: 1 })
+    const r = new rrweb.Replayer(boot.events, { ...config, skipInactive: true, speed: 1 })
     mount(r)
     // rrweb applies the events strictly before a seek point: 1ms past the last one shows it.
     total = r.getMetaData().totalTime + 1
@@ -208,7 +197,7 @@
     if (e.key === 'ArrowRight') ctl.seekBy(5000)
   })
 
-  if (mode !== 'live') return startReplay(Number(params.get('t') || 0), params.get('paused') === '1' || isExport)
+  if (mode !== 'live') return startReplay(Number(params.get('t') || 0), params.get('paused') === '1')
 
   // ----------------------------------------------------------------- live
   let applied = 0

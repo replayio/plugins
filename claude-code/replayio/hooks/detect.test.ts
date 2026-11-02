@@ -1,72 +1,78 @@
 import { expect, test } from 'claude-code/testing'
 
-import { closedSessions, endCwd, openedSessions, parseBrowserCommands, withOutput } from './detect.ts'
+import { joinDir, netEffect, openedSession, parseBrowserCommands } from './detect.ts'
 
-const pw = (kind: 'open' | 'close', session: string | null, cwd: string | null = null) => ({ tool: 'playwright-cli', kind, session, cwd })
-const ab = (kind: 'open' | 'close', session: string, cwd: string | null = null) => ({ tool: 'agent-browser', kind, session, cwd })
+const parse = (command: string, cwd: string | null = '/repo') => parseBrowserCommands(command, cwd)
 
-test('recognizes playwright-cli open and close with each session spelling', () => {
-  expect(parseBrowserCommands('npx --yes --package @playwright/cli playwright-cli -s=rt open http://localhost:3000')).toEqual([pw('open', 'rt')])
-  expect(parseBrowserCommands('"$PWCLI" --session rt close')).toEqual([pw('close', 'rt')])
-  expect(parseBrowserCommands('playwright-cli --session="rt2" open "$URL" --headed')).toEqual([pw('open', 'rt2')])
+test('a plain open, with and without a session', () => {
+  expect(parse('agent-browser open http://x')).toEqual([{ kind: 'open', session: 'default', cwd: '/repo' }])
+  expect(parse('agent-browser --session a open http://x')).toEqual([{ kind: 'open', session: 'a', cwd: '/repo' }])
+  expect(parse('agent-browser --session=a open http://x')).toEqual([{ kind: 'open', session: 'a', cwd: '/repo' }])
+  expect(parse('AGENT_BROWSER_SESSION=b agent-browser open http://x')).toEqual([{ kind: 'open', session: 'b', cwd: '/repo' }])
 })
 
-test('recognizes the package invoked directly, and wrappers around it', () => {
-  expect(parseBrowserCommands('npx -y @playwright/cli open http://localhost:8791/index.html')).toEqual([pw('open', null)])
-  // The exact shapes an agent wrote: a shell function, then calls through it and a pipe.
-  const wrapper = 'cd /tmp/demo; export RECORD_ALL_CONTENT=1\npw(){ npx -y @playwright/cli "$@"; }\npw open http://localhost:8791/index.html 2>&1 | tail -15\npw snapshot 2>&1 | tail -15'
-  expect(parseBrowserCommands(wrapper, '/work')).toEqual([pw('open', null, '/tmp/demo')])
-  // A variable holding the CLI.
-  expect(parseBrowserCommands('P="npx -y @playwright/cli"\n$P open http://x\n$P close')).toEqual([pw('open', null), pw('close', null)])
-  expect(parseBrowserCommands("alias pwc='playwright-cli'; pwc -s=a open http://x")).toEqual([pw('open', 'a')])
+test('any verb that needs a browser counts: agent-browser starts one for it', () => {
+  for (const verb of ['snapshot', 'click @e1', 'batch "open http://x"', 'connect 9222', 'eval "1"']) {
+    expect(parse(`agent-browser -s a ${verb}`)[0]?.kind).toBe('open')
+  }
 })
 
-test('leaves shell-variable sessions unresolved', () => {
-  expect(parseBrowserCommands('"$PWCLI" --session="$SESSION" open "$URL"')).toEqual([pw('open', null)])
+test('verbs that never touch a browser do not', () => {
+  for (const verb of ['skills get core', 'session list', 'profiles', 'install', 'open --help', '--version']) {
+    expect(parse(`agent-browser ${verb}`)).toEqual([])
+  }
 })
 
-test('ignores other verbs and unrelated commands', () => {
-  expect(parseBrowserCommands('"$PWCLI" --session=rt snapshot')).toEqual([])
-  expect(parseBrowserCommands('git commit -m "open the browser"')).toEqual([])
-  expect(parseBrowserCommands('npm run open')).toEqual([])
-  expect(parseBrowserCommands('agent-browser fill @e2 "Ada"; agent-browser click @e4')).toEqual([])
+test('flags with values are not verbs', () => {
+  expect(parse('agent-browser --executable-path /x/Chromium open http://x')[0]?.kind).toBe('open')
+  expect(parse('agent-browser --profile close open http://x')[0]?.kind).toBe('open')
 })
 
-test('finds commands inside chains and the lifecycle scripts', () => {
-  expect(parseBrowserCommands('cd app && node "$SCRIPT_DIR/browser-open.js" "$URL" --session qa1 && echo ok')).toEqual([pw('open', 'qa1')])
-  expect(parseBrowserCommands('node scripts/browser-close.js --session qa1; replayio list')).toEqual([pw('close', 'qa1')])
+test('close, and close --all', () => {
+  expect(parse('agent-browser -s a close')).toEqual([{ kind: 'close', session: 'a', cwd: '/repo' }])
+  expect(parse('agent-browser close --all')).toEqual([{ kind: 'close', session: 'default', cwd: '/repo', all: true }])
 })
 
-test('recognizes agent-browser, skipping the values of its flags', () => {
-  const open = 'EXE=~/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium\nexport RECORD_ALL_CONTENT=1\nagent-browser close >/dev/null 2>&1\nagent-browser --executable-path $EXE open http://localhost:8791/index.html 2>&1 | tail -3'
-  expect(parseBrowserCommands(open)).toEqual([ab('close', 'default'), ab('open', 'default')])
-  expect(parseBrowserCommands('agent-browser --session qa --executable-path /x/chromium open http://x')).toEqual([ab('open', 'qa')])
-  expect(parseBrowserCommands('AGENT_BROWSER_SESSION=work agent-browser open http://x')).toEqual([ab('open', 'work')])
-  expect(parseBrowserCommands('agent-browser close --all')).toEqual([{ ...ab('close', 'default'), all: true }])
+test('wrappers and variables', () => {
+  expect(parse('ab(){ npx agent-browser "$@"; }; ab open http://x')[0]?.kind).toBe('open')
+  expect(parse('AB="npx agent-browser"; $AB -s q open http://x')[0]).toEqual({ kind: 'open', session: 'q', cwd: '/repo' })
+  expect(parse('npx --yes agent-browser open http://x')[0]?.kind).toBe('open')
 })
 
-test('follows cd, so the tracer is injected from the directory the browser opened in', () => {
-  const open = 'npx --yes --package @playwright/cli playwright-cli --session=d open http://localhost:3000'
-  expect(parseBrowserCommands(`cd /tmp && RECORD_ALL_CONTENT=1 ${open}`, '/work/app')).toEqual([pw('open', 'd', '/tmp')])
-  expect(parseBrowserCommands(`cd demo/site && ${open}`, '/work/app')).toEqual([pw('open', 'd', '/work/app/demo/site')])
-  expect(parseBrowserCommands(`cd ../other; ${open}`, '/work/app')).toEqual([pw('open', 'd', '/work/other')])
-  expect(parseBrowserCommands(open, '/work/app')).toEqual([pw('open', 'd', '/work/app')])
-  expect(parseBrowserCommands(`cd "$APP" && ${open}`, '/work/app')).toEqual([pw('open', 'd', null)])
-  expect(parseBrowserCommands(`cd ~/proj && ${open}`, '/work/app')).toEqual([pw('open', 'd', null)])
-  expect(endCwd('cd /tmp/demo; export A=1\nwhatever', '/work')).toBe('/tmp/demo')
+test('shell structure around it', () => {
+  expect(parse('if true; then agent-browser open http://x; fi')[0]?.kind).toBe('open')
+  expect(parse('URL=$(agent-browser -s a get url)')).toEqual([])
+  expect(parse('(agent-browser -s a open http://x)')[0]?.session).toBe('a')
+  expect(parse('/opt/homebrew/bin/agent-browser -s a open http://x')[0]?.session).toBe('a')
+  expect(parse('agent-browser -s a snapshot | head -5')[0]?.session).toBe('a')
 })
 
-test('reads the session names the output reports', () => {
-  expect(openedSessions('### Browser `rt2` opened with pid 71956.\n### Page')).toEqual(['rt2'])
-  expect(openedSessions('{\n  "playwright_session": "replayio-17",\n  "url": "x"\n}')).toEqual(['replayio-17'])
-  expect(closedSessions("Browser 'rt2' closed")).toEqual(['rt2'])
+test('a session held in a shell variable is unknown', () => {
+  expect(parse('agent-browser -s "$S" open http://x')[0]?.session).toBe(null)
 })
 
-test('falls back to the output when the command text hides the CLI', () => {
-  const output = '### Browser `default` opened with pid 9219.\n### Ran Playwright code'
-  expect(withOutput([], output, '/tmp/demo')).toEqual([pw('open', 'default', '/tmp/demo')])
-  expect(withOutput([], "Browser 'x' closed", '/w')).toEqual([pw('close', 'x', '/w')])
-  // Text that already showed the open is left alone.
-  const shown = parseBrowserCommands('playwright-cli -s=a open http://x', '/w')
-  expect(withOutput(shown, '### Browser `a` opened with pid 1.', '/w')).toEqual(shown)
+test('cd moves where later commands run', () => {
+  expect(parse('cd app && agent-browser open http://x')[0]?.cwd).toBe('/repo/app')
+  expect(parse('cd "$X" && agent-browser open http://x')[0]?.cwd).toBe(null)
+  expect(joinDir('/a/b', '../c')).toBe('/a/c')
+})
+
+test('the lifecycle scripts', () => {
+  expect(parse('node "$SCRIPT_DIR/browser-open.js" http://x --session a')).toEqual([{ kind: 'open', session: 'a', cwd: '/repo' }])
+  expect(parse('node scripts/browser-close.js --session a')).toEqual([{ kind: 'close', session: 'a', cwd: '/repo' }])
+  expect(openedSession('{ "agent_browser_session": "replayio-1" }')).toBe('replayio-1')
+})
+
+test('commands that only mention it do not count', () => {
+  expect(parse('grep agent-browser README.md')).toEqual([])
+  expect(parse('echo done')).toEqual([])
+  expect(parse('rg "agent-browser open" docs')).toEqual([])
+  expect(parse('git commit -m "use agent-browser open"')).toEqual([])
+  expect(parse('cat scripts/agent-browser')).toEqual([])
+})
+
+test('netEffect keeps what each session ended up doing', () => {
+  const opened = parse('agent-browser open http://x && agent-browser snapshot')
+  expect(netEffect(opened)).toEqual([{ kind: 'open', session: 'default', cwd: '/repo' }])
+  expect(netEffect(parse('agent-browser open http://x && agent-browser close'))[0]?.kind).toBe('close')
 })

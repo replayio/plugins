@@ -1,9 +1,11 @@
-// Builds the two browser assets the live players need, from npm:
+// Builds the browser assets the live players need, from npm:
 //   tracer.js   @replayio-app-building/session-recorder, bundled as an
 //               init script that drains captured packets to the
 //               __replayClaudeEmit binding the relay's inject script adds.
 //   vendor/     rrweb's UMD build and stylesheet, for player.html's Replayer
 //               (the same rrweb version the recorder records with).
+//   detect.mjs  hooks/detect.ts for rrweb.mjs, which runs with no build step.
+// Then copies the runtime to the other hosts' plugins: see sync-hosts.mjs.
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +20,8 @@ import { startSession } from "@replayio-app-building/session-recorder";
   if (window.top !== window || window.__replayClaudeTracer) return;
   const emit = window.__replayClaudeEmit;
   if (typeof emit !== "function") return;
+  // New-tab and blank pages hold nothing to watch, and would take the player away from the real page.
+  if (!/^(https?|file):$/.test(location.protocol)) return;
   window.__replayClaudeTracer = true;
 
   // The recorder assumes a secure context with real storage. A file:// page or a plain-http
@@ -53,24 +57,37 @@ import { startSession } from "@replayio-app-building/session-recorder";
     }
   }
 
-  // Installs the capture proxies (fetch, WebSocket, storage) and rrweb, which
-  // waits for DOMContentLoaded itself, so this runs at document start.
-  let session;
-  try {
-    session = startSession();
-  } catch (err) {
-    emit(JSON.stringify([{ kind: "detectedError", time: new Date().toISOString(), detectedError: { message: "Replay live tracer failed to start: " + String(err && err.message || err) } }]));
-    return;
-  }
+  const start = () => {
+    // Installs the capture proxies (fetch, WebSocket, storage) and rrweb, which
+    // waits for DOMContentLoaded itself.
+    let session;
+    try {
+      session = startSession();
+    } catch (err) {
+      emit(JSON.stringify([{ kind: "detectedError", time: new Date().toISOString(), detectedError: { message: "Replay live tracer failed to start: " + String(err && err.message || err) } }]));
+      return;
+    }
 
-  const flush = () => {
-    const packets = session.getSessionData();
-    if (packets.length === 0) return;
-    emit(JSON.stringify(packets));
-    session.release?.(packets.length);
+    const flush = () => {
+      const packets = session.getSessionData();
+      if (packets.length === 0) return;
+      emit(JSON.stringify(packets));
+      session.release?.(packets.length);
+    };
+    setInterval(flush, 200);
+    window.addEventListener("pagehide", flush);
   };
-  setInterval(flush, 200);
-  window.addEventListener("pagehide", flush);
+
+  // A new-document script runs before <html> exists, and the recorder observes it as it starts:
+  // start the moment it is parsed, which is still ahead of every script of the page.
+  if (document.documentElement) start();
+  else {
+    new MutationObserver((_, observer) => {
+      if (!document.documentElement) return;
+      observer.disconnect();
+      start();
+    }).observe(document, { childList: true });
+  }
 })();
 `
 
@@ -96,4 +113,14 @@ const css = ['style.min.css', 'style.css', 'rrweb.min.css'].find(f => fs.existsS
 if (!umd || !css) throw new Error(`rrweb dist has no UMD build or stylesheet: ${fs.readdirSync(rrwebDist).join(', ')}`)
 fs.copyFileSync(path.join(rrwebDist, umd), path.join(here, 'vendor', 'rrweb.min.js'))
 fs.copyFileSync(path.join(rrwebDist, css), path.join(here, 'vendor', 'rrweb.min.css'))
+await esbuild.build({
+  entryPoints: [path.join(here, '..', 'hooks', 'detect.ts')],
+  outfile: path.join(here, 'detect.mjs'),
+  format: 'esm',
+  platform: 'neutral',
+  target: 'es2020',
+  banner: { js: '// Built from hooks/detect.ts by `npm run build`: edit that.' },
+  logLevel: 'warning',
+})
+
 console.log(`Built tracer.js and vendor/ (rrweb ${JSON.parse(fs.readFileSync(path.join(rrwebDir, 'package.json'), 'utf8')).version}: ${umd}, ${css})`)

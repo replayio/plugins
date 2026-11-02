@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/replayio_browser_lifecycle_hook.sh"
+            "command": "node ./live/rrweb.mjs hook"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/close_browsers_and_upload.sh"
+            "command": "node ./live/rrweb.mjs stop >/dev/null"
           }
         ]
       }
