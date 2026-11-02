@@ -194,7 +194,7 @@ const canvasPage = (projectId: string) => relayUrl(`/canvas/${encodeURIComponent
 // ---------------------------------------------------------------- projects
 
 /**
- * `.replay/config.json` at the git root: the scripts keep `qa-project-id` there, and the replayqa
+ * `.replay/config.json` at the git root: the replayqa CLI keeps `qa-project-id` there, and its
  * CLI the QA server its tunnel talks to (`proxy.qa-url`, set for a PR preview or staging).
  */
 async function readConfig($: EngineInterface): Promise<{ projectId: string | null; qaUrl: string | null }> {
@@ -337,8 +337,8 @@ async function handleQaResult(
   since: number,
 ): Promise<void> {
   const parsed = parseQaOutput(output)
-  const startedExploration = parsed.explorationId && isRunningStatus(parsed.explorationStatus) && (!command || command.script === 'start-exploration')
-  const wantsFollow = Boolean(startedExploration || command?.startsRun || (command && ['status', 'full-qa', 'bootstrap'].includes(command.script)))
+  const startedExploration = parsed.explorationId && isRunningStatus(parsed.explorationStatus) && (!command || command.verb === 'start-exploration')
+  const wantsFollow = Boolean(startedExploration || command?.startsRun || (command && ['status', 'full-qa', 'bootstrap'].includes(command.verb)))
   if (!wantsFollow) return
   const projectId = parsed.projectId ?? (await resolveProjectId($, command?.projectId))
   if (!projectId) {

@@ -1,5 +1,6 @@
 // node --test live/test/relay.test.mjs
-// Starts the real relay against the mock QA API and drives it over HTTP.
+// Starts the real relay against the mock QA API and drives it over HTTP. Recordings are read by the
+// pinned replayqa CLI; REPLAY_QA_CLI ("node /path/to/replayqa-cli/bin.js") tests against a checkout.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -51,7 +52,7 @@ test('follows a project: a live run streams while finished ones load on demand a
   const done = synthEvents({ title: 'Checkout', steps: 12 })
   const mock = await startMock({
     projects: [{
-      id: 'p1', name: 'Shop',
+      id: 'proj-p1', name: 'Shop',
       journeys: [{ id: 'j1', name: 'Checkout' }, { id: 'j2', name: 'Search' }, { id: 'j3', name: 'Never run' }],
       runs: [
         { id: 'run-a', journey_id: 'j1', status: 'completed', title: 'Checkout', events: done },
@@ -63,7 +64,7 @@ test('follows a project: a live run streams while finished ones load on demand a
   t.after(async () => { relay.stop(); await mock.close(); fs.rmSync(dataDir, { recursive: true, force: true }) })
 
   // Following turns the live run into a recording on its own.
-  const followed = await relay.call('POST', '/qa/follow', { projectId: 'p1' })
+  const followed = await relay.call('POST', '/qa/follow', { projectId: 'proj-p1' })
   assert.equal(followed.status, 200)
   assert.equal(followed.data.project.name, 'Shop')
   assert.equal(followed.data.tiles[0].status, 'live', 'live work is listed first')
@@ -97,7 +98,7 @@ test('follows a project: a live run streams while finished ones load on demand a
   assert.match(text, /event: events\ndata: \{"from":\d+,"events":\[/)
 
   // The finished run loads on request and ends.
-  const watched = await relay.call('POST', '/qa/watch', { projectId: 'p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
+  const watched = await relay.call('POST', '/qa/watch', { projectId: 'proj-p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
   assert.equal(watched.status, 200)
   const ended = await until(async () => {
     const r = (await relay.call('GET', `/recordings/${watched.data.recording.id}`)).data
@@ -120,7 +121,7 @@ test('follows a project: a live run streams while finished ones load on demand a
   await sleep(300)
   const before = mock.calls.filter(c => c.includes('recording-events')).length
   relay = await startRelay(mock.url, dataDir)
-  const again = await relay.call('POST', '/qa/watch', { projectId: 'p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
+  const again = await relay.call('POST', '/qa/watch', { projectId: 'proj-p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
   assert.equal(again.data.recording.status, 'ended')
   assert.equal(again.data.recording.eventCount, done.length)
   assert.equal(mock.calls.filter(c => c.includes('recording-events')).length, before, 'no API request was needed')
@@ -128,7 +129,7 @@ test('follows a project: a live run streams while finished ones load on demand a
 
 test('reports a missing token and a missing project plainly', async t => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-relay-'))
-  const mock = await startMock({ projects: [{ id: 'p1', name: 'Shop', journeys: [], runs: [] }] })
+  const mock = await startMock({ projects: [{ id: 'proj-p1', name: 'Shop', journeys: [], runs: [] }] })
   const relay = await startRelay(mock.url, dataDir)
   t.after(async () => { relay.stop(); await mock.close(); fs.rmSync(dataDir, { recursive: true, force: true }) })
   const res = await relay.call('GET', '/qa/overview?project=nope')
@@ -140,13 +141,13 @@ test('draws a finished run\'s last frame once, as the thumbnail the canvas shows
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-relay-'))
   const mock = await startMock({
     projects: [{
-      id: 'p1', name: 'Shop', journeys: [{ id: 'j1', name: 'Checkout' }],
+      id: 'proj-p1', name: 'Shop', journeys: [{ id: 'j1', name: 'Checkout' }],
       runs: [{ id: 'run-a', journey_id: 'j1', status: 'completed', title: 'Checkout', events: synthEvents({ title: 'Checkout', steps: 8 }) }],
     }],
   })
   const relay = await startRelay(mock.url, dataDir)
   t.after(async () => { relay.stop(); await mock.close(); fs.rmSync(dataDir, { recursive: true, force: true }) })
-  const ask = () => relay.call('POST', '/qa/thumbnail', { projectId: 'p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
+  const ask = () => relay.call('POST', '/qa/thumbnail', { projectId: 'proj-p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
   const first = await ask()
   assert.equal(first.status, 200)
   assert.equal(first.data.id, 'run-a')

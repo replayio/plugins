@@ -47,10 +47,10 @@ claude plugin install replayio@replayio
 
 | Item | Installs |
 | --- | --- |
-| `codex` | Codex Replay QA app installed to `.codex-plugin/`, `skills/replay-qa/`, `assets/`, and packaged scripts for project setup, status, bugs, journeys, test runs, explorations, and fix verification. |
+| `codex` | Codex Replay QA app installed to `.codex-plugin/`, `skills/replay-qa/`, and `assets/`, using the `replayqa` CLI for project setup, status, bugs, journeys, test runs, explorations, and fix verification. |
 | `codex-pro` | Codex Replay.io Pro dev tools installed to `.codex-plugin/`, `.mcp.json`, `.app.json`, `agents/openai.yaml`, `hooks.json`, `scripts/`, `skills/replayio/`, and `assets/`, with worker/critic proof-loop prompts, browser-open/browser-close lifecycle scripts, a side-by-side stitch helper, and hooks for screencast capture, ffmpeg-backed MP4 output, and Replay uploads. |
 | `cursor` | Cursor plugin bundle installed to `.cursor-plugin/`, `skills/`, `assets/`, hooks, scripts, MCP config, and worker/critic proof-loop prompts. |
-| `claude-code` | Claude Code Replay QA plugin installed to `.claude/skills/replay-qa/`, including plugin commands and script-backed skill helpers. |
+| `claude-code` | Claude Code Replay QA plugin installed to `.claude/skills/replay-qa/`, including plugin commands and a skill that use the `replayqa` CLI. |
 | `claude-pro` | Claude Code Replay.io Pro plugin installed to `.claude/skills/replayio/`, `.claude/agents/`, hooks, scripts, MCP config, commands, and Replay Pro skill guidance. |
 | `opencode` | OpenCode plugin bundle installed to `.opencode/plugins/`, `.opencode/agent/`, `AGENTS.md`, and `opencode.json`, including worker/critic proof-loop subagents. |
 | `obvious-ai` | Skills-only Obvious bundle installed to `.obvious/skills/replay-qa-api/SKILL.md`, including direct Replay QA API, Replay CLI token fallback, artifact, and project-reuse guidance. |

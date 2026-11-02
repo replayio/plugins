@@ -7,7 +7,7 @@
       "name": "codex",
       "type": "registry:item",
       "title": "Replay QA Codex Plugin",
-      "description": "Codex Replay QA app for running QA against production, staging, and PR preview URLs with packaged project, status, bug, journey, and exploration scripts.",
+      "description": "Codex Replay QA app for running QA against production, staging, and PR preview URLs through the replayqa CLI for project, status, bug, journey, and exploration workflows.",
       "files": [
         {
           "path": "codex/replay-qa/.codex-plugin/plugin.json",
@@ -28,86 +28,6 @@
           "path": "codex/replay-qa/skills/replay-qa/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replay-qa/SKILL.md"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/bootstrap.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/bootstrap.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/bug.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/bug.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/bugs.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/bugs.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/context.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/context.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/explorations.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/explorations.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/full-qa.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/full-qa.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/journeys.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/journeys.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/mark-bug.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/mark-bug.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/package.json",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/package.json"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/replay-qa-lib.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/report-missing-bug.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/rerun-journeys.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/reverse-proxy.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/start-exploration.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/start-exploration.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/status.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/status.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/test-runs.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/test-runs.js"
         }
       ]
     },
@@ -286,7 +206,7 @@
       "name": "claude-code",
       "type": "registry:item",
       "title": "Replay.io Claude Code Plugin",
-      "description": "Claude Code plugin bundle for Replay QA API scripts, slash commands, and agent skill guidance, plus live views: inline rrweb players for explorations and journey runs, and a canvas that streams every journey in parallel.",
+      "description": "Claude Code plugin bundle for the replayqa CLI, slash commands, and agent skill guidance, plus live views: inline rrweb players for explorations and journey runs, and a canvas that streams every journey in parallel.",
       "docs": "After installing, start Claude Code from the project root. The plugin should load automatically from `.claude/skills/replay-qa`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replay-qa\n```\n\nReplay QA commands are provided by the plugin, including `/replay-qa:run-full-qa`, `/replay-qa:qa-status`, `/replay-qa:qa-bugs`, `/replay-qa:start-new-exploration`, `/replay-qa:rerun-journeys`, and `/replay-qa:report-missing-bug`.\n\nLive views (explorations and journey runs streaming into the conversation, and `/replayqa canvas`) use Claude Code function hooks: set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (for example in the `env` block of `~/.claude/settings.json`), use a kitty-graphics terminal such as Ghostty or kitty, and install Replay Chromium with `npx @replayio/replay install`.",
       "files": [
         {
@@ -338,86 +258,6 @@
           "path": "claude-code/replay-qa/skills/replay-qa/SKILL.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/SKILL.md"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bootstrap.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bootstrap.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bug.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bug.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bugs.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bugs.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/context.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/context.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/explorations.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/explorations.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/full-qa.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/full-qa.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/journeys.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/journeys.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/mark-bug.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/mark-bug.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/package.json",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/package.json"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/report-missing-bug.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/rerun-journeys.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/reverse-proxy.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/start-exploration.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/start-exploration.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/status.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/status.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/test-runs.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/test-runs.js"
         },
         {
           "path": "claude-code/replay-qa/assets/replay-logo.png",

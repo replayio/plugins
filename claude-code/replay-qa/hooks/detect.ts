@@ -1,12 +1,11 @@
-// Recognizes the Replay QA scripts a Bash command runs, and reads what they (or the QA MCP
+// Recognizes the `replayqa` commands a Bash command runs, and reads what they (or the QA MCP
 // tools) printed: the project, a newly started exploration, bug and run ids.
 //
-// The scripts print pretty JSON through `qa.printJson` (a response object) or `printSection`
-// (`=== Title ===` followed by JSON), so output is read by finding JSON values in the text,
-// with a regex fallback on the ids, which are recognizable by prefix (`proj-`, `expl-`, `run-`,
-// `bug-`).
+// The CLI prints pretty JSON (a response object) or `=== Title ===` sections followed by JSON,
+// so output is read by finding JSON values in the text, with a regex fallback on the ids, which
+// are recognizable by prefix (`proj-`, `expl-`, `run-`, `bug-`).
 
-export type QaScript =
+export type QaVerb =
   | 'start-exploration'
   | 'rerun-journeys'
   | 'mark-bug'
@@ -15,27 +14,30 @@ export type QaScript =
   | 'status'
   | 'bootstrap'
 
-const SCRIPTS: QaScript[] = ['start-exploration', 'rerun-journeys', 'mark-bug', 'report-missing-bug', 'full-qa', 'status', 'bootstrap']
-const SCRIPT_WORD = new RegExp(`(?:^|/)(${SCRIPTS.join('|')})\\.js["']?$`)
-const RUNNERS = new Set(['node', 'bun', 'deno', 'tsx', 'nodejs'])
+const VERBS = new Set<string>(['start-exploration', 'rerun-journeys', 'mark-bug', 'report-missing-bug', 'full-qa', 'status', 'bootstrap'])
+const CLI = /^(?:.*\/)?replayqa(?:@[\w.-]+)?$/
+/** What runs a package by name; `pnpm dlx replayqa`, `npm exec replayqa` and `yarn dlx replayqa` have a word more. */
+const RUNNERS = new Set(['npx', 'bunx', 'pnpx', 'pnpm', 'npm', 'yarn', 'exec', 'command', 'env', 'time', 'nohup', 'sudo'])
+const SHELL_WORDS = new Set(['then', 'do', 'else', 'if', 'while', 'until', '!', '{', '('])
 const PROJECT_ID = /proj-[A-Za-z0-9_-]+/
 
 export type QaCommand = {
-  script: QaScript
+  verb: QaVerb
   projectId?: string
   bugId?: string
   bugStatus?: string
   /** The backend will start a test run of its own because of this command (a bug marked fixed, a missing bug reported). */
   startsRun: boolean
-  /** The QA server the script talks to when it is not the default: REPLAY_QA_API_BASE or REPLAY_QA_URL set on the command. */
+  /** The QA server the command talks to when it is not the default: REPLAY_QA_API_BASE or REPLAY_QA_URL set on it. */
   server?: string
 }
 
 /** Shell words of one simple command, quotes removed (no expansion). */
 function words(segment: string): string[] {
   const out: string[] = []
-  const re = /"((?:\\.|[^"\\])*)"|'([^']*)'|(\S+)/g
-  for (let m = re.exec(segment); m; m = re.exec(segment)) out.push(m[1] ?? m[2] ?? m[3] ?? '')
+  // A word can be several quoted and bare runs: `QA="npx replayqa"`, `--project="proj-a"`.
+  const re = /(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s"']+)+/g
+  for (const m of segment.matchAll(re)) out.push(m[0].replace(/"((?:\\.|[^"\\])*)"|'([^']*)'/g, (_, a, b) => a ?? b ?? ''))
   return out
 }
 
@@ -45,41 +47,53 @@ const VALUE_FLAGS = new Set([
   '--target-url', '--instructions', '--journey-id', '--page', '--page-size', '--interval-ms',
 ])
 
-/** Names a segment assigns: `SCRIPT=".../start-exploration.js"` and `FOO=bar node x.js`. */
+/** Names a segment assigns: `QA="npx --yes replayqa@x.y.z"` and `FOO=bar replayqa status`. */
 function assignments(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {}
   for (const w of argv) {
-    const m = /^(?:export\s+)?([A-Za-z_]\w*)=(.*)$/.exec(w)
-    if (m) out[m[1]!] = m[2]!.replace(/["']/g, '')
+    const m = /^([A-Za-z_]\w*)=(.*)$/.exec(w)
+    if (m) out[m[1]!] = m[2]!
   }
   return out
 }
 
-/** The Replay QA script a command runs, with the arguments that matter; null when it runs none. */
+/** Shell functions wrapping the CLI: `qa(){ npx --yes replayqa@x.y.z "$@"; }`. */
+function wrappers(command: string): Set<string> {
+  const names = new Set<string>()
+  for (const m of command.matchAll(/([A-Za-z_][\w-]*)\s*\(\)\s*\{([^}]*)\}/g)) if (/\breplayqa\b/.test(m[2]!)) names.add(m[1]!)
+  return names
+}
+
+/** The `replayqa` verb a command runs, with the arguments that matter; null when it runs no verb the live views follow. */
 export function parseQaCommand(command: string): QaCommand | null {
   const env: Record<string, string> = {}
+  const wrapped = wrappers(command)
   for (const segment of command.split(SEGMENTS)) {
     const argv = words(segment.trim())
     Object.assign(env, assignments(argv))
-    for (let i = 0; i < argv.length; i++) {
-      const raw = argv[i]!
-      if (/^(?:export\s+)?[A-Za-z_]\w*=/.test(raw)) continue
-      // `node "$SCRIPT"` where an earlier assignment named the file.
-      const variable = /^\$\{?([A-Za-z_]\w*)\}?$/.exec(raw)?.[1]
-      const word = variable ? (env[variable] ?? '') : raw
-      const script = SCRIPT_WORD.exec(word)?.[1] as QaScript | undefined
-      if (!script) continue
-      // It runs only when something executes it: a runner before it, or the word is the command.
-      const before = argv.slice(0, i).filter(w => !/^[A-Za-z_]\w*=/.test(w) && w !== 'export')
-      const runs = before.length === 0 || before.some(w => RUNNERS.has(w.split('/').pop()!))
-      if (!runs) continue
-      return fromArgs(script, argv.slice(i + 1), env)
-    }
+    // The CLI must be what runs, not a word it is given: `grep replayqa README.md` is a grep.
+    let at = 0
+    while (at < argv.length && (/^[A-Za-z_]\w*=/.test(argv[at]!) || argv[at] === 'export' || SHELL_WORDS.has(argv[at]!))) at++
+    if (argv[at] === undefined) continue
+    // `$QA status`, where an earlier assignment named the command.
+    const variable = /^\$\{?([A-Za-z_]\w*)\}?$/.exec(argv[at]!)?.[1]
+    const line = variable ? [...words(env[variable] ?? ''), ...argv.slice(at + 1)] : argv.slice(at)
+    const head = line[0]?.replace(/^(?:\$\(|\()+/, '') ?? ''
+    let cli = -1
+    if (CLI.test(head)) cli = 0
+    else if (wrapped.has(head)) cli = 0
+    else if (RUNNERS.has(head.split('/').pop()!)) cli = line.findIndex((w, i) => i > 0 && CLI.test(w))
+    if (cli < 0) continue
+    // `npx --package replayqa replayqa status`: the real command is the last of the run.
+    while (line[cli + 1] !== undefined && CLI.test(line[cli + 1]!)) cli++
+    const verb = line[cli + 1]
+    if (verb === undefined || !VERBS.has(verb)) continue
+    return fromArgs(verb as QaVerb, line.slice(cli + 2), env)
   }
   return null
 }
 
-function fromArgs(script: QaScript, args: string[], env: Record<string, string>): QaCommand {
+function fromArgs(verb: QaVerb, args: string[], env: Record<string, string>): QaCommand {
   const flags: Record<string, string> = {}
   const positional: string[] = []
   for (let i = 0; i < args.length; i++) {
@@ -95,16 +109,16 @@ function fromArgs(script: QaScript, args: string[], env: Record<string, string>)
     PROJECT_ID.exec(flags['--project-id'] ?? flags['--project'] ?? flags['--project-url'] ?? '')?.[0]
     ?? positional.map(p => PROJECT_ID.exec(p)?.[0]).find(Boolean)
     ?? PROJECT_ID.exec(env.REPLAY_QA_PROJECT_ID ?? '')?.[0]
-  const bugId = flags['--bug-id'] ?? (script === 'mark-bug' ? positional.find(p => !PROJECT_ID.test(p)) : undefined)
-  const bugStatus = script === 'mark-bug'
+  const bugId = flags['--bug-id'] ?? (verb === 'mark-bug' ? positional.find(p => !PROJECT_ID.test(p)) : undefined)
+  const bugStatus = verb === 'mark-bug'
     ? flags['--status'] ?? positional.filter(p => p !== bugId && !PROJECT_ID.test(p))[0] ?? 'fixed'
     : undefined
   const startsRun =
-    (script === 'mark-bug' && bugStatus === 'fixed')
-    || (script === 'rerun-journeys' && Boolean(bugId))
-    || script === 'report-missing-bug'
+    (verb === 'mark-bug' && bugStatus === 'fixed')
+    || (verb === 'rerun-journeys' && Boolean(bugId))
+    || verb === 'report-missing-bug'
   const server = env.REPLAY_QA_API_BASE || env.REPLAY_QA_URL
-  return { script, ...(projectId ? { projectId } : {}), ...(bugId ? { bugId } : {}), ...(bugStatus ? { bugStatus } : {}), startsRun, ...(server ? { server } : {}) }
+  return { verb, ...(projectId ? { projectId } : {}), ...(bugId ? { bugId } : {}), ...(bugStatus ? { bugStatus } : {}), startsRun, ...(server ? { server } : {}) }
 }
 
 // ------------------------------------------------------------------- output
