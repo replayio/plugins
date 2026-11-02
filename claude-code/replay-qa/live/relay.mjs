@@ -21,7 +21,7 @@ import crypto from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { AuthError, NotFoundError, RecordingStream, apiBaseOf, tunnelServers } from './qa-stream.mjs'
+import { AuthError, NotFoundError, apiBaseOf, tunnelServers } from './qa-stream.mjs'
 
 /** live/: this script, the pages and vendor/. */
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -430,6 +430,7 @@ const chrome = new Chrome()
 // ------------------------------------------------------------------ project state
 
 const SOURCE_KEY = { task: 'task_id', test_run: 'test_run_id', exploration: 'exploration_id' }
+const SOURCE_FLAG = { task: 'task', test_run: 'test-run', exploration: 'exploration' }
 
 /** project id -> { project, journeys, runs, explorations, liveTasks, updatedAt, error, refreshing } */
 const projects = new Map()
@@ -617,30 +618,86 @@ async function watch({ projectId, kind, sourceId, title, goal }) {
   return rec
 }
 
-async function readLoop(rec) {
-  const stream = new RecordingStream({ request, projectId: rec.projectId, key: SOURCE_KEY[rec.kind], id: rec.sourceId })
-  const catchUp = async () => {
-    for (let more = true; more;) {
-      const page = await stream.pull()
-      rec.loadedPages++
-      more = page.hasMore
-      applyRows(rec, page.rows)
-    }
+/** The pinned CLI that reads recordings. A release cannot change this plugin's stream by itself. */
+const REPLAYQA = process.env.REPLAY_QA_CLI?.split(' ').filter(Boolean) ?? ['npx', '--yes', 'replayqa@0.4.0']
+/** Readers running now, so none outlives the relay. */
+const readers = new Set()
+
+/**
+ * Runs `replayqa recording-events` for a recording, applying each batch of rows as it arrives.
+ * `stop()` ends a `--forever` reader; `done` resolves when it has exited, or rejects with why it failed.
+ */
+async function readRows(rec, flags) {
+  const [command, ...args] = REPLAYQA
+  const child = spawn(command, [
+    ...args, 'recording-events', '--project-id', rec.projectId, `--${SOURCE_FLAG[rec.kind]}`, rec.sourceId, '--ignore-config', ...flags,
+  ], { stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, REPLAY_QA_API_BASE: await apiBaseFor(rec.projectId) } })
+  const stop = () => {
+    // npx runs the CLI as its own child: signal the group. Closing stdin ends it even if this never runs.
+    try { process.kill(-child.pid, 'SIGTERM') } catch {}
+    child.stdin.destroy()
   }
+  readers.add(stop)
+  let buffered = ''
+  let stderr = ''
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', chunk => {
+    buffered += chunk
+    const lines = buffered.split('\n')
+    buffered = lines.pop()
+    const rows = []
+    for (const line of lines) {
+      try {
+        const row = JSON.parse(line)
+        if (row.kind === 'rrweb' || row.kind === 'note') rows.push(row)
+      } catch {}
+    }
+    if (rows.length === 0) return
+    rec.loadedPages++
+    applyRows(rec, rows)
+    bump(rec.id)
+  })
+  child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-2000) })
+  const done = new Promise((resolve, reject) => {
+    child.on('error', err => reject(new Error(`could not run ${command}: ${err.message}`)))
+    child.on('close', (code, signal) => {
+      readers.delete(stop)
+      if (code === 0 || signal) return resolve()
+      const message = stderr.trim() || `replayqa recording-events exited ${code}`
+      reject(code === 2 ? new AuthError(message) : code === 3 ? new NotFoundError(message) : new Error(message))
+    })
+  })
+  return { stop, done }
+}
+
+async function readLoop(rec) {
   try {
-    for (;;) {
-      await catchUp()
-      await refreshProject(rec.projectId, { maxAge: PROJECT_MAX_AGE_MS }).catch(() => {})
-      const live = sourceIsLive(rec.projectId, rec.kind, rec.sourceId)
-      rec.status = live ? 'live' : rec.status === 'loading' ? 'loading' : rec.status
-      if (!live) {
-        // Rows can land just after the status flips: read once more before closing.
-        await sleep(1_500)
-        await catchUp()
-        break
-      }
+    await refreshProject(rec.projectId, { maxAge: PROJECT_MAX_AGE_MS }).catch(() => {})
+    if (sourceIsLive(rec.projectId, rec.kind, rec.sourceId)) {
+      rec.status = 'live'
       bump(rec.id)
-      await sleep(LIVE_POLL_MS)
+      const reader = await readRows(rec, ['--forever', '--interval-ms', String(LIVE_POLL_MS)])
+      let failed = null
+      reader.done.catch(err => { failed = err })
+      while (!failed) {
+        await sleep(LIVE_POLL_MS)
+        await refreshProject(rec.projectId, { maxAge: PROJECT_MAX_AGE_MS }).catch(() => {})
+        if (!sourceIsLive(rec.projectId, rec.kind, rec.sourceId)) break
+      }
+      if (failed) throw failed
+      // Rows can land just after the status flips: the reader gets a poll or two more.
+      await sleep(LIVE_POLL_MS + 1_500)
+      reader.stop()
+      await reader.done
+    } else {
+      // Finished: a one-shot read. These load on demand, so at most a few at once.
+      await slot()
+      try {
+        const reader = await readRows(rec, [])
+        await reader.done
+      } finally {
+        release()
+      }
     }
     rec.status = 'ended'
     rec.endedAt = Date.now()
@@ -1118,6 +1175,7 @@ server.listen(Number(process.env.REPLAY_QA_LIVE_PORT ?? 0), '127.0.0.1', () => {
 })
 
 const shutdown = () => {
+  for (const stop of readers) stop()
   chrome.stop()
   process.exit(0)
 }

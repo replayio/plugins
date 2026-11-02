@@ -1,26 +1,15 @@
 {
-  "description": "Replay browser lifecycle hooks, plus the inline live players (register.tsx)",
+  "description": "Records every agent-browser session as an rrweb stream and draws it in the transcript (register.tsx); closes this directory's browsers and uploads their Replay recordings when a turn ends",
   "modules": [
     "./register.tsx"
   ],
   "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/replayio_browser_lifecycle_hook.sh\""
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/close_browsers_and_upload.sh\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/live/rrweb.mjs\" stop >/dev/null"
           }
         ]
       }

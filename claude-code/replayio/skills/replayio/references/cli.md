@@ -4,11 +4,16 @@ Configure the browser executable before opening the host agent browser:
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
 
-Use the packaged browser lifecycle scripts for Replay-first browser work. `browser-open.js` opens the browser with Replay recording flags and starts WebM screencast capture; `browser-close.js` stops capture, closes the browser, transcodes WebM to MP4 with ffmpeg, verifies MP4 output, and uploads pending Replay recordings.
+`AGENT_BROWSER_PROFILE` tells agent-browser to copy login state from the main Chrome profile into a temporary Replay Chromium profile. `Default` is the normal default; run `agent-browser profiles` and set a different display or directory name when needed. The source Chrome profile is never modified, and the temporary copy is deleted when the Replay browser closes. Omit the profile setting when a clean unauthenticated session is required.
+
+In Claude Code the plugin sets these for every shell it starts.
+
+Use agent-browser directly, or the packaged scripts for JSON output. `browser-open.js` opens the URL in Replay Chromium and starts the rrweb recording; `browser-close.js` closes the browser, finishes its `.rrweb` file, and uploads its Replay recordings. Any `agent-browser` command is recorded either way.
 
 ## Basics
 
@@ -31,70 +36,24 @@ When the browser work is done, close through the lifecycle script:
 node "$SCRIPT_DIR/browser-close.js"
 ```
 
-## MP4 Recording With Screencast And ffmpeg
+## rrweb Recordings
 
-Open the browser before meaningful interaction:
-
-```bash
-VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
-node "$SCRIPT_DIR/browser-open.js" "$URL" --output "$VIDEO_PATH"
-```
-
-Close, stop capture, synchronously transcode to MP4, verify video, and upload Replay recordings before reporting:
+Each session streams to `~/.replay/rrweb/recordings/<time>-<session>-<id>.rrweb` as it runs: one JSON value per line, rrweb events verbatim alongside the recorder's own lines (`header`, `feed`, `replay`, `end`). To get a plain rrweb event array:
 
 ```bash
-PLAYWRIGHT_SESSION="<playwright_session from browser-open.js output>"
-npx --yes --package @playwright/cli playwright-cli -s="$PLAYWRIGHT_SESSION" snapshot
-node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
+jq -s 'map(select(.type | numbers))' file.rrweb > events.json
 ```
 
-Always embed generated MP4 files in the final response with Markdown image syntax:
-
-```markdown
-![video](/absolute/path/to/recording.mp4)
-```
-
-Do not use Playwright BrowserContext `recordVideo` for requested MP4 evidence. It can produce WebM. The lifecycle scripts intentionally capture WebM internally in a named Playwright CLI session, then `browser-close.js` waits for capture stop and ffmpeg to finish before returning a verified MP4. Use `playwright-cli -s="$PLAYWRIGHT_SESSION"` for every command in the run; otherwise you may attach to a stale default session. Do not embed a WebM or rename WebM to `.mp4`.
-
-Do expect WebM bytes before the close/transcode step. `playwright-cli video-start` can write WebM bytes to a path ending in `.mp4`; that path is only the capture source until ffmpeg finishes. If a raw flow already wrote WebM to `$VIDEO_PATH`, do not move the source and do not pass `--webm-path`; run:
+Watch recordings in any browser. The viewer streams one live while it is being made and plays it with a seek bar once it has ended:
 
 ```bash
-node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
+node "$SCRIPT_DIR/../live/rrweb.mjs" list                   # every recording, newest first, with its file
+node "$SCRIPT_DIR/../live/rrweb.mjs" play latest            # or a session name, a recording id, or a path to a .rrweb file
 ```
 
-`browser-close.js` automatically handles WebM bytes at the output path. It also auto-detects adjacent `*.capture.webm`, `*.source.webm`, and `*.webm` files with the same basename if an older run already moved the source aside.
+`play` opens the viewer and prints its `viewer_url`. Give the person that URL when they should watch a run. It works on this machine only.
 
-Replay upload is optional for local MP4 validity. If close output includes a verified `video` object but upload failed, embed the local MP4 and report the upload failure separately.
-
-`browser-close.js` removes stale frames by default with ffmpeg `mpdecimate,setpts=(3*N)/(30*TB),fps=30` so idle waits do not dominate the MP4 while UI state changes remain readable. The default `--stale-time-scale 3` makes the compressed result about 3x longer than the most aggressive duplicate-removal cadence. Disable only when real-time duration matters:
-
-```bash
-node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH" --compress-stale false
-```
-
-Tune the cadence when needed:
-
-```bash
-node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH" --stale-time-scale 2
-```
-
-If ffmpeg is missing, install it and rerun:
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu/Debian
-sudo apt update && sudo apt install ffmpeg
-
-# Windows
-winget install Gyan.FFmpeg
-# or: choco install ffmpeg
-
-ffmpeg -version
-```
-
-The raw-frame screencast route with `onFrame` can feed frames into ffmpeg for custom streaming encoders, but the final video is still only safe to embed after the ffmpeg process exits successfully.
+Replay upload is separate from the rrweb file. If `browser-close.js` reports `upload_error`, the file is still complete; report the upload failure separately.
 
 ## Worker/Critic Prompt Templates
 
@@ -107,25 +66,17 @@ CRITIC_PROMPT="${CLAUDE_PLUGIN_ROOT:-.claude/skills/replayio}/agents/replay-crit
 
 Use the worker prompt for the implementation subagent that edits code and records the final session. Use the critic prompt for the read-only subagent that inspects the uploaded Replay recording against the requirements and diff. The critic should use Replay MCP only; it should not run shell commands, edit files, or open a fresh browser.
 
-## Multi-Session And Side-By-Side Output
+## Multi-Session Output
 
-For two browser sessions, name each session and pass that name to every command:
+For two browser sessions, name each session and pass that name to every command. Each gets its own `.rrweb` file and its own live stream:
 
 ```bash
-node "$SCRIPT_DIR/browser-open.js" "$URL" --session "$RUN_ID-ada" --output "$(pwd)/recordings/$RUN_ID-ada.mp4"
-node "$SCRIPT_DIR/browser-open.js" "$URL" --session "$RUN_ID-linus" --output "$(pwd)/recordings/$RUN_ID-linus.mp4"
-npx --yes --package @playwright/cli playwright-cli -s="$RUN_ID-ada" snapshot
-npx --yes --package @playwright/cli playwright-cli -s="$RUN_ID-linus" snapshot
+node "$SCRIPT_DIR/browser-open.js" "$URL" --session "$RUN_ID-ada"
+node "$SCRIPT_DIR/browser-open.js" "$URL" --session "$RUN_ID-linus"
+agent-browser --session "$RUN_ID-ada" snapshot
+agent-browser --session "$RUN_ID-linus" snapshot
 node "$SCRIPT_DIR/browser-close.js" --session "$RUN_ID-ada"
 node "$SCRIPT_DIR/browser-close.js" --session "$RUN_ID-linus"
-```
-
-`browser-open.js` writes per-session state. `browser-close.js --session "$RUN_ID-ada"` reads that state, so the Ada and Linus outputs do not overwrite each other.
-
-Use `stitch-videos.js` to render a combined MP4:
-
-```bash
-node "$SCRIPT_DIR/stitch-videos.js" --output "$(pwd)/recordings/$RUN_ID.mp4" "$LEFT_VIDEO" "$RIGHT_VIDEO"
 ```
 
 ## `jq` Filtering For Uploads

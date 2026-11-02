@@ -1,22 +1,23 @@
 # Agent Browser Workflows
 
-Use the packaged browser lifecycle scripts for Replay-first work. `browser-open.js` opens the browser with Replay recording flags and starts WebM screencast capture; `browser-close.js` stops capture, closes the browser, transcodes WebM to MP4 with ffmpeg, verifies MP4 output, and uploads pending Replay recordings.
+Use agent-browser with Replay Chromium for Replay-first work. Every session is recorded as an rrweb stream to a `.rrweb` file, watchable live and afterwards. `browser-open.js` and `browser-close.js` wrap the open and close with JSON output; `browser-close.js` also uploads the session's Replay recordings.
 
 ## Standard Interaction Loop
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
 
 Then drive the browser through the host browser API:
 
-1. Open the target URL with `browser-open.js` and keep the returned `playwright_session`.
+1. Open the target URL with `browser-open.js` and keep the returned `agent_browser_session`.
 2. Take a DOM snapshot or screenshot.
-3. Interact with stable locators or visible UI, passing `-s="$PLAYWRIGHT_SESSION"` to each `playwright-cli` command.
+3. Interact with stable locators or visible UI, passing `--session "$SESSION"` to each `agent-browser` command.
 4. Re-snapshot after DOM changes or navigation.
-5. Close with `browser-close.js` when done; it must finish successfully before embedding video because it waits for ffmpeg to write the MP4.
+5. Close with `browser-close.js` when done; the recording finishes then, and it reports the `.rrweb` file and the Replay URLs.
 6. Use the Codex stop hook only as a cleanup safety net.
 
 ## Debugging And Inspection
@@ -48,73 +49,26 @@ The critic must be a separate role from the worker whenever the host supports su
 
 Treat `needs_revision` as an implementation failure and send it back to the worker. Treat `needs_evidence` as a proof-session failure and re-record the missing behavior without unnecessary code churn. Only report completion after the critic is satisfied or after clearly explaining the remaining blocker.
 
-## Screencast MP4 Loop
+## Live And Historical Streams
+
+While a browser runs, its stream is live; once it closes, the same recording plays with a seek bar. `rrweb.mjs play` takes `latest`, a session name, a recording id, or the path of a `.rrweb` file and opens the viewer for it:
 
 ```bash
-VIDEO_PATH="$(pwd)/tmp/recordings/browser-run/browser-run.mp4"
-node "$SCRIPT_DIR/browser-open.js" "$URL" --output "$VIDEO_PATH"
-PLAYWRIGHT_SESSION="<playwright_session from browser-open.js output>"
+node "$SCRIPT_DIR/../live/rrweb.mjs" play latest
 ```
 
-Use `playwright-cli` interaction, inspection, and chapter commands during the run:
-
-```bash
-npx --yes --package @playwright/cli playwright-cli -s="$PLAYWRIGHT_SESSION" video-chapter "Checkout flow"
-npx --yes --package @playwright/cli playwright-cli -s="$PLAYWRIGHT_SESSION" snapshot
-```
-
-Before responding:
-
-```bash
-node "$SCRIPT_DIR/browser-close.js" --output "$VIDEO_PATH"
-```
-
-Embed the video directly in the response:
-
-```markdown
-![video](/absolute/path/to/browser-run.mp4)
-```
-
-Internally, capture is WebM. The MP4 exists only after `browser-close.js` stops capture and ffmpeg exits successfully. `playwright-cli video-start` can write WebM bytes even when the path ends in `.mp4`; treat that as the source capture, not the final artifact. If the WebM source is already at `$VIDEO_PATH`, do not move it or pass a separate source flag; run `browser-close.js --output "$VIDEO_PATH"` so it can transcode in place. If an older run already moved the source aside, `browser-close.js` auto-detects matching adjacent `*.capture.webm`, `*.source.webm`, and `*.webm` files.
-
-If ffmpeg is missing, install it and rerun:
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu/Debian
-sudo apt update && sudo apt install ffmpeg
-
-# Windows
-winget install Gyan.FFmpeg
-# or: choco install ffmpeg
-```
-
-Use the raw-frame `onFrame` screencast path only when a task specifically needs live custom encoding. Even then, close the encoder stream and wait for the ffmpeg process to exit before reporting the final MP4.
-
-`browser-close.js` compresses stale frames by default with a `--stale-time-scale 3` cadence, so long idle waits are removed while the remaining state changes play about 3x longer than the most aggressive duplicate-removal output. Use `--compress-stale false` only when the user needs real-time duration.
-
-Replay upload failure does not invalidate a verified local MP4. If the close output includes a valid `video` object and an upload error, embed the MP4 and report the upload problem separately.
+A Replay upload failure does not affect the `.rrweb` file. Report it separately.
 
 Before recording auth/backend-dependent app behavior, elicit whether to test the app as-is or with emulation/mocks. Recommend emulation when missing local services would otherwise make login, checkout, email, database, OAuth, or API flows look broken for reasons unrelated to the UI under test.
 
 ## Purpose-Built `record:replay` Project Scripts
 
-When the app needs emulators, seeded users, two browser sessions, or repeatable proof artifacts, add a project-local `record:replay` script instead of doing a one-off manual browser run. The script should start the emulator and app on explicit ports, wait for health, run a dedicated Replay Playwright config, poll `replayio list --json` until the new recordings are `finished`, upload only finished IDs, stitch the two Playwright videos into a side-by-side MP4, write `recordings/latest.json`, and stop every spawned process in `finally`.
+When the app needs emulators, seeded users, two browser sessions, or repeatable proof artifacts, add a project-local `record:replay` script instead of doing a one-off manual browser run. The script should start the emulator and app on explicit ports, wait for health, run a dedicated Replay Playwright config, poll `replayio list --json` until the new recordings are `finished`, upload only finished IDs, write `recordings/latest.json`, and stop every spawned process in `finally`.
 
-Do not upload local IDs that still have `recordingStatus: "recording"`. Poll with a timeout and report stuck IDs separately. This avoids runs where one browser video is valid but the second Replay URL is missing because the recording was uploaded too early.
+Do not upload local IDs that still have `recordingStatus: "recording"`. Poll with a timeout and report stuck IDs separately. This avoids runs where one Replay URL is missing because the recording was uploaded too early.
 
-Use the plugin stitch helper for the final proof video:
 
-```bash
-node "$SCRIPT_DIR/stitch-videos.js" \
-  --output "$(pwd)/recordings/$RUN_ID.mp4" \
-  "$ADA_VIDEO" \
-  "$LINUS_VIDEO"
-```
-
-For lifecycle-script multi-browser runs, give each browser a stable session name and always pass the matching session to every `playwright-cli` and `browser-close.js` command. `browser-open.js` writes per-session state files so `browser-close.js --session "$SESSION"` can close the intended browser and output.
+For multi-browser runs, give each browser a stable session name and pass it to every `agent-browser` and `browser-close.js` command.
 
 ## `jq` For Replay Lists
 

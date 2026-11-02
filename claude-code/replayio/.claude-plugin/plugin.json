@@ -1,7 +1,7 @@
 {
   "name": "replayio",
-  "version": "0.2.0",
-  "description": "Use Replay.io Pro from Claude Code with Replay Chromium recordings, inline live and scrubbable browser players, MP4 evidence, Replay MCP debugging, and worker/critic proof-loop subagents.",
+  "version": "0.3.0",
+  "description": "Use Replay.io Pro from Claude Code: every agent-browser session runs in Replay Chromium and is recorded as an rrweb stream to a .rrweb file, with an inline player that streams it live or replays it, plus Replay MCP debugging and worker/critic proof-loop subagents.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -14,13 +14,10 @@
     "replayio",
     "claude-code",
     "agent-browser",
-    "playwright",
     "time-travel-debugging",
     "recording",
-    "mp4",
     "subagents",
     "proof",
-    "live-preview",
     "rrweb"
   ]
 }

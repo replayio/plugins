@@ -1,102 +1,96 @@
 ---
 name: "replay-qa"
 description: "Managed E2E testing service for finding bugs and adversarial verification"
-allowed-tools: Bash(node *)
+allowed-tools: Bash(npx --yes replayqa@0.4.0 *)
 ---
 
 # Replay QA
 
-Use Replay QA through the bundled scripts in `${CLAUDE_SKILL_DIR}/scripts`. The scripts call the Replay QA HTTP API directly, preserve project state in the repo, and avoid requiring the model to remember raw endpoint details.
+Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.4.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
 
 ## Current Replay QA Context
 
-This block is injected when the skill loads. If shell execution is disabled or auth is missing, use the error message to decide which setup step to run next.
+This block is injected when the skill loads. If shell execution is disabled or auth is missing, use the message to decide which setup step to run next.
 
 ```!
-node "${CLAUDE_SKILL_DIR}/scripts/context.js" "$ARGUMENTS"
+npx --yes replayqa@0.4.0 context
 ```
 
 ## Authentication
 
-The scripts look for a token in this order:
-
-1. `REPLAY_QA_API_KEY`
-2. `REPLAY_API_KEY`
-3. `REPLAY_ACCESS_TOKEN`
-4. `~/.replay/profile/auth.json`
-
-If the user is not logged in, run:
+The CLI shares Replay's login cache. Authenticate once:
 
 ```bash
-npx replayio login
-npx replayio whoami
+npx --yes replayqa@0.4.0 login
 ```
 
-If the API returns 401, ask the user to export a Replay QA API token as `REPLAY_QA_API_KEY` or `REPLAY_API_KEY`.
+Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.4.0 auth`.
 
 ## Project Reuse
 
-Before creating or selecting a Replay QA project, always inspect the current project root for `.replay/config.json`.
+Project ids are resolved in this order: `--project <id or URL>`, then `REPLAY_QA_PROJECT_ID`, then `qa-project-id` in `.replay/config.json` at the git root. Reuse the stored project for all Replay QA work in this repo. Do not create a duplicate unless the user explicitly asks for a new project or the stored one is proven invalid for the current account.
 
-Resolve the project root with `git rev-parse --show-toplevel`; if that fails, use the current directory. If `.replay/config.json` contains a non-empty string property named `"qa-project-id"`, reuse that project id for all Replay QA work in this repo. Do not create a duplicate project unless the user explicitly asks for a new project or the stored project is proven invalid for the current account.
-
-If the user gives a Replay QA dashboard URL, pass it directly to the script or pass its project id with `--project-id`. The scripts recognize project ids such as `proj-example` inside positional arguments, `--project-id`, `--project-url`, and `REPLAY_QA_PROJECT_ID`. An explicit project argument overrides `.replay/config.json`.
-
-If there is no reusable project id, create a project with `bootstrap.js` or `full-qa.js`. The scripts write the new project id back to `.replay/config.json` while preserving unrelated keys:
-
-```json
-{
-  "qa-project-id": "projectId"
-}
-```
+If the user gives a dashboard URL, pass it with `--project`. If there is no project, `bootstrap` and `full-qa` create one and write its id to `.replay/config.json`, preserving other keys.
 
 When reporting setup, say whether the id was reused from `.replay/config.json`, passed explicitly, read from the environment, or created and written back.
 
 ## Local Apps
 
-Replay QA needs network access to the app under test. For local apps, pass a local URL such as `http://localhost:3000`; the project creation script sets `use_reverse_proxy=true` for local URLs. After project creation, run `reverse-proxy.js --wait` or follow the runbook printed by `full-qa.js` so Replay QA can reach the local app. If the user provides a public URL, pass `--public`.
+Replay QA needs network access to the app under test. Do not create, scaffold, or modify the target application unless the user asks, and do not add a `.replay/config.json` merely because this skill loaded.
 
-## Scripts
-
-Run scripts with Node from the project root:
+From the app's repository, start its normal dev server behind the CLI's wrapper. The target URL is the stable browser-visible origin and the upstream URL is the dev server; their ports must differ:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/full-qa.js" http://localhost:3000 "Test the core user journeys."
+npx --yes replayqa@0.4.0 run http://localhost:3000 \
+  --upstream-url http://127.0.0.1:5173 \
+  --app-command "npm run dev -- --host 0.0.0.0 --port 5173" \
+  --project proj_123
 ```
 
-Available scripts:
+`run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
 
-| Script | Purpose |
+```bash
+npx --yes replayqa@0.4.0 proxy --project proj_123 --target-url http://localhost:3000
+```
+
+Use `--allow` when the browser must reach additional local or private hosts. Pass `--public` to project creation when the user provides a public URL.
+
+## Commands
+
+Every command prints JSON for agent use. `npx --yes replayqa@0.4.0 <command> --help` gives its options, and `npx --yes replayqa@0.4.0 skill` prints the CLI's full guide.
+
+| Command | Purpose |
 | --- | --- |
-| `bootstrap.js` | Create or reuse a project, then show details, status, and reverse-proxy setup. |
-| `context.js` | Inject concise current project context, status, and open bug summaries into this skill. |
-| `full-qa.js` | Create or reuse a project, show status, show reverse-proxy setup, fetch open bug details, and print next steps. |
-| `status.js` | Show project status; pass `--watch` to poll. |
-| `reverse-proxy.js` | Show reverse-proxy setup; pass `--wait` to poll until instructions are ready. |
-| `explorations.js` | List explorations. |
-| `start-exploration.js` | Start a focused exploration only when the user asks for one. |
-| `journeys.js` | List journeys or filter locally with `--journey-id`. |
-| `test-runs.js` | List test runs; pass `--journey-id` to review a single journey's run history. |
-| `bugs.js` | List bugs; use `--status`, `--details`, and `--save`. |
-| `bug.js` | Fetch one bug by id. |
-| `mark-bug.js` | Mark a bug `fixed`, `wontfix`, `invalid`, or `reopened`. Marking `fixed` automatically retries the affected journey. |
-| `report-missing-bug.js` | Report a missing bug and ask Replay QA to create an investigation journey. |
-| `rerun-journeys.js` | Expose supported journey retry alternatives because there is no direct single-journey rerun endpoint. |
+| `full-qa [url] [instructions]` | Create or reuse a project, show status and reverse-proxy setup, fetch open bug details, and print next steps. |
+| `bootstrap [url] [instructions]` | Create or reuse a project, then show details, status, and reverse-proxy setup. |
+| `context` | Concise current project context, status, and open bug summaries. |
+| `status` | Show project status; pass `--watch` to poll. |
+| `reverse-proxy` | Show reverse-proxy setup; pass `--wait` to poll until instructions are ready. |
+| `explorations` | List explorations. |
+| `start-exploration <prompt>` | Start a focused exploration only when the user asks for one. |
+| `journeys` | List journeys, or filter with `--journey-id`. |
+| `test-runs` | List test runs; pass `--journey-id` to review a single journey's run history. |
+| `bugs` | List bugs; use `--status`, `--details`, and `--save`. `--raw` prints the unmodified API response. |
+| `bug <id>` | Fetch one bug. |
+| `mark-bug <id> [status]` | Mark a bug `fixed`, `wontfix`, `invalid`, or `reopened`. Marking `fixed` automatically retries the affected journey. |
+| `report-missing-bug <description>` | Report a missing bug and ask Replay QA to create an investigation journey. |
+| `rerun-journeys` | Supported journey retry alternatives, as there is no direct single-journey rerun endpoint. |
+| `recording-events <run-…\|expl-…\|task-…>` | Stream a run's rrweb events and notes, one JSON value per line; `--follow` until it finishes. For viewers: full snapshots are large, so do not read it yourself. |
+| `doctor` | Diagnose authentication, managed dependencies, DNS, and recent proxy failures. `--fix` repairs managed dependencies. |
 
-List scripts print normalized JSON for agent use. For example, `bugs.js` returns a top-level `bugs` array even when the API response uses `items`. Pass `--raw` to `bugs.js` if you need the unmodified API list response.
+Bug-type exclusions in the instructions (for example "Exclude accessibility.") switch those bug types off project-wide. Relay the printed "Bug types" notice to the user. To review them before QA starts, pass `--no-start-exploration` when creating the project, then run `start-exploration`.
 
 Common examples:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/full-qa.js" http://localhost:3000
-node "${CLAUDE_SKILL_DIR}/scripts/status.js" --watch
-node "${CLAUDE_SKILL_DIR}/scripts/bugs.js" "https://qa.replay.io/projects/proj-example/bugs"
-node "${CLAUDE_SKILL_DIR}/scripts/bugs.js" --status open --details --save
-node "${CLAUDE_SKILL_DIR}/scripts/bug.js" bug_id_here --save
-node "${CLAUDE_SKILL_DIR}/scripts/mark-bug.js" bug_id_here fixed
-node "${CLAUDE_SKILL_DIR}/scripts/start-exploration.js" "Focus on onboarding, invalid inputs, refreshes, and back navigation."
-node "${CLAUDE_SKILL_DIR}/scripts/rerun-journeys.js" --bug-id bug_id_here
-node "${CLAUDE_SKILL_DIR}/scripts/report-missing-bug.js" "Settings changes do not persist after refresh."
+npx --yes replayqa@0.4.0 status --watch
+npx --yes replayqa@0.4.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
+npx --yes replayqa@0.4.0 bugs --status open --details --save
+npx --yes replayqa@0.4.0 bug bug_id_here --save
+npx --yes replayqa@0.4.0 mark-bug bug_id_here fixed
+npx --yes replayqa@0.4.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
+npx --yes replayqa@0.4.0 rerun-journeys --bug-id bug_id_here
+npx --yes replayqa@0.4.0 report-missing-bug "Settings changes do not persist after refresh."
 ```
 
 ## Slash Commands
@@ -118,24 +112,24 @@ With function hooks enabled the plugin also adds `/replayqa` (no namespace) for 
 
 When the Claude Code session has function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`), this plugin streams Replay QA work into the conversation. You do not run anything extra:
 
-- Starting an exploration (`start-exploration.js`), marking a bug fixed (`mark-bug.js … fixed`, which makes Replay QA re-test the journey), or reporting a missed bug (`report-missing-bug.js`) turns that call's result into a live rrweb player. The project is followed, so every exploration and journey run that is executing streams in parallel, and finished runs can be opened from the canvas.
+- Starting an exploration (`start-exploration`), marking a bug fixed (`mark-bug … fixed`, which makes Replay QA re-test the journey), or reporting a missed bug (`report-missing-bug`) turns that call's result into a live rrweb player. The project is followed, so every exploration and journey run that is executing streams in parallel, and finished runs can be opened from the canvas.
 - `/replayqa canvas` opens a canvas of every journey in the project: running ones stream live, finished ones load on click. `/replayqa live` lists what is streaming, and `/replayqa open` opens a player in the browser.
-- The streams are read from `GET /api/v1/projects/{project_id}/recording-events` through a local relay; nothing is sent anywhere else.
+- The streams are read with `replayqa recording-events` through a local relay; nothing is sent anywhere else.
 
-When you start an exploration for the user, say that the live player is in the result and mention `/replayqa canvas`. Do not poll the stream yourself: keep using `status.js` and `bugs.js` for state, and read the bug reports for findings.
+When you start an exploration for the user, say that the live player is in the result and mention `/replayqa canvas`. Do not poll the stream yourself: keep using `status` and `bugs` for state, and read the bug reports for findings.
 
 ## Agent Workflow
 
 Use this loop for QA and repair:
 
 1. Start or confirm the app under test.
-2. Run `full-qa.js` with the target URL and any user instructions.
-3. If reverse-proxy instructions are returned, run them from a machine that can reach the app.
-4. Poll `status.js` until there is useful progress.
-5. Fetch open bug details with `bugs.js --status open --details --save`.
+2. Run `full-qa` with the target URL and any user instructions.
+3. If a private target needs connecting, keep `replayqa run` or `replayqa proxy` running in a background shell.
+4. Poll `status` until there is useful progress.
+5. Fetch open bug details with `bugs --status open --details --save`. They land under `.replay/qa-bugs/`.
 6. Read the full bug report before editing code. Use Replay QA's reproduction steps, expected behavior, actual behavior, evidence, and root-cause analysis as the primary debugging source.
 7. Fix the codebase.
-8. Mark each fixed bug with `mark-bug.js <bug-id> fixed`; Replay QA automatically retries the affected journey.
+8. Mark each fixed bug with `mark-bug <bug-id> fixed`; Replay QA automatically retries the affected journey.
 9. Poll status and list open bugs again.
 10. Repeat until no open bugs remain.
 
@@ -145,8 +139,14 @@ Do not manually start new explorations unless the user asks. Project creation al
 
 The current OpenAPI spec exposes journeys and test runs, but it does not expose a direct endpoint to manually run one journey. Use these supported alternatives:
 
-1. To inspect prior runs for a journey, run `test-runs.js --journey-id <journey-id>`.
-2. To verify a bug fix, run `mark-bug.js <bug-id> fixed`; Replay QA automatically retries the affected journey.
-3. To investigate a missed scenario, run `report-missing-bug.js "<description>"`; Replay QA creates an investigation journey.
+1. To inspect prior runs for a journey, run `test-runs --journey-id <journey-id>`.
+2. To verify a bug fix, run `mark-bug <bug-id> fixed`; Replay QA automatically retries the affected journey.
+3. To investigate a missed scenario, run `report-missing-bug "<description>"`; Replay QA creates an investigation journey.
 
 Do not claim that a journey was manually rerun unless one of the supported flows actually triggered verification.
+
+## Troubleshooting
+
+- Run `doctor` first: it checks authentication, the managed `frpc`, storage, tunnel DNS, and recent proxy failures without starting anything. Use `--fix` only when its report identifies a broken managed dependency.
+- Run `auth` if the API rejects a request.
+- Run `status --watch` to distinguish queued work from a disconnected proxy.

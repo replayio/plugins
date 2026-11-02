@@ -5,6 +5,27 @@ description: "Use when you need to record or inspect an agent browser run in Rep
 
 # Replay Browser + Agent Browser + Replay MCP
 
+## rrweb Recordings
+
+Every agent-browser session is recorded. The plugin's hook joins the browser over CDP, injects an rrweb recorder into each page, and appends the stream to a `.rrweb` file:
+
+```text
+~/.replay/rrweb/recordings/<time>-<session>-<id>.rrweb
+```
+
+The file holds one JSON value per line: a line whose `type` is a number is an rrweb event, verbatim, and one whose `type` is a string is the recorder's own (`header`, `feed`, `replay`, `end`). It grows as the browser runs, so it is complete up to the last event even if the browser crashes. `jq -s 'map(select(.type | numbers))' file.rrweb` turns one into a plain rrweb event array.
+
+Watch recordings in any browser. The viewer streams one live while it is being made and plays it with a seek bar once it has ended:
+
+```bash
+node "<plugin root>/live/rrweb.mjs" list                   # every recording, newest first, with its file
+node "<plugin root>/live/rrweb.mjs" play latest            # or a session name, a recording id, or a path to a .rrweb file
+```
+
+`play` opens the viewer and prints its `viewer_url`. Give the person that URL when they should watch a run. It works on this machine only.
+
+The recording captures what the pages showed, so with a Chrome profile imported it includes logged-in content. Password inputs are masked. Files are readable only by the current user and stay on this machine.
+
 ## Cursor Browser Choice
 
 Use Cursor's agent browser only when it is configured to launch Replay Chromium through `AGENT_BROWSER_EXECUTABLE_PATH`. Do not use a preview pane or embedded webview that cannot honor that executable path as the recorded browser run.
@@ -21,7 +42,10 @@ For the standard Replay install on macOS, the executable is usually:
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 ```
+
+The profile setting copies the main Chrome profile's login state into a temporary Replay Chromium profile. Run `agent-browser profiles` and override `AGENT_BROWSER_PROFILE` when the desired Chrome profile is not `Default`. The source profile remains read-only and the temporary copy is deleted when the browser closes. Omit the setting for a clean unauthenticated run.
 
 Recordings upload through the plugin's stop/idle hook as a safety net. If you need the Replay URL before reporting results, close the agent browser tab/session and force an upload with `replayio upload-all || replayio upload`.
 
@@ -106,12 +130,13 @@ Do not treat an auth wall as a generic error to brute-force by closing and reope
 1. Verify the Replay runtime exists and the CLI is logged in.
 2. Resolve the Replay Chromium executable path.
 3. Export `AGENT_BROWSER_EXECUTABLE_PATH` to that executable **before** opening the agent browser.
-4. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
-5. If testing a local app, start it first and verify the actual reachable URL.
-6. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
-7. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
-8. Close the agent browser tab/session when done.
-9. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
+4. Export `AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"` so the Replay browser receives a temporary snapshot of the main Chrome profile.
+5. Set both `RECORD_ALL_CONTENT='1'` and `RECORD_REPLAY_VERBOSE='1'`.
+6. If testing a local app, start it first and verify the actual reachable URL.
+7. Drive and inspect the page directly with the host agent browser, not `playwright-cli`.
+8. Use fresh DOM snapshots or screenshots after navigation and major UI changes.
+9. Close the agent browser tab/session when done.
+10. Run `replayio upload-all || replayio upload` if you need the uploaded Replay URL before reporting results.
 
 ## Prerequisites
 
@@ -153,6 +178,7 @@ The agent browser should launch Replay Chromium through `AGENT_BROWSER_EXECUTABL
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 ```
 
 Verify the executable exists before browser work:
@@ -193,6 +219,7 @@ If a localhost request fails even though a process is clearly listening, you may
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```
