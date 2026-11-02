@@ -10,7 +10,7 @@ Every agent-browser session a Replay plugin sees runs in Replay Chromium and is 
 
 1. A host notices an `agent-browser` command: the Claude Code mod through `tool.call`, the others through a shell hook running `rrweb.mjs hook`. agent-browser starts a browser for any command that needs one, so every such verb counts (`hooks/detect.ts`).
 2. `rrweb.mjs` starts `relay.mjs` if it is not running: one zero-dependency Node daemon per machine, on 127.0.0.1 with a random port and token, described by `~/.replay/rrweb/relay.json`. It exits after an idle hour.
-3. The relay joins the browser over CDP (`agent-browser get cdp-url`) and adds `tracer.js` as a new-document script with a binding for its packets, so page CSP never blocks it. A session keeps one recording until its browser goes away, however that happens.
+3. The relay joins the browser over CDP (`agent-browser get cdp-url`) and adds `tracer.js` as a new-document script with a binding for its packets, so page CSP never blocks it. A session keeps one recording until its browser goes away, however that happens. In Replay Chromium each page also reports its Replay recording id, which is the only thing that links a session to what gets uploaded.
 4. `tracer.js` is [`@replayio-app-building/session-recorder`](https://www.npmjs.com/package/@replayio-app-building/session-recorder) (rrweb plus network, storage and websocket capture), drained every 200 ms.
 5. `player.html` plays a recording with rrweb's `Replayer`, over SSE when live. For Claude Code the relay renders it in headless Replay Chromium, with recording off, and screencasts PNG frames the hooks module draws as an `Image`, with the seek bar as a `Client` (`hooks/scrubber.tsx`).
 

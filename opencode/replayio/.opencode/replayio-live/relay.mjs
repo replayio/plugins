@@ -10,7 +10,7 @@
 //   inline (the Claude Code mod's <Image>). GET /frames long-polls for new frames.
 //
 // .rrweb files hold one JSON value per line. A line whose `type` is a number is an rrweb event,
-// verbatim; one whose `type` is a string is the relay's own (header, feed, replay, end).
+// verbatim; one whose `type` is a string is the relay's own (header, feed, replay_id, replay, end).
 //
 // Zero dependencies: Node >= 22 (global fetch + WebSocket).
 
@@ -116,6 +116,7 @@ function parseRecording(rec, text) {
       else if (obj.type === 'feed') rec.feed.push(...obj.items)
       else if (obj.type === 'end') rec.endedAt = obj.endedAt
       else if (obj.type === 'replay') rec.replay = obj.recordings
+      else if (obj.type === 'replay_id') (rec.replayIds ??= new Set()).add(obj.id)
       else if (obj.type === 'reset') rec.events = []
     } catch {}
   }
@@ -165,6 +166,12 @@ function ingest(session, page, pageUrl, packets) {
   const id = bySession.get(session)
   const rec = id && recordings.get(id)
   if (!rec || rec.status !== 'live') return false
+  // Every page's, not just the one the player follows: all of them are this session's recordings.
+  for (const packet of packets) {
+    if (packet.kind !== 'replayRecording' || rec.replayIds?.has(packet.id)) continue
+    ;(rec.replayIds ??= new Set()).add(packet.id)
+    appendLine(rec, { type: 'replay_id', id: packet.id })
+  }
   // A new document (the tracer's first packet is `version`) makes its page the
   // one the player follows, so a navigation or a newly opened tab takes over.
   const isNewDocument = packets.some(p => p.kind === 'version')
@@ -227,24 +234,17 @@ function replayio(args, timeout = 120_000) {
   })
 }
 
-const hostOf = url => { try { return new URL(url).host } catch { return null } }
-
 /**
- * Finds the Replay Chromium recordings of a browser session: the ones that
- * started while it ran, of a page it visited. A session that ran in another
- * browser has none.
+ * The Replay Chromium recordings of a browser session: exactly the ones its pages reported being
+ * part of. Never matched by host or time, as an upload must not take another session's recording.
+ * A session in another browser has none.
  */
 async function linkReplay(rec) {
+  if (!rec.replayIds?.size) return []
   const out = await replayio(['list', '--json'], 30_000)
   const list = JSON.parse(out.slice(out.indexOf('[')))
-  const hosts = new Set([rec.url, ...rec.feed.filter(f => f.kind === 'nav').map(f => f.text)].map(hostOf).filter(Boolean))
-  const from = rec.startedAt - 60_000
-  const to = (rec.endedAt ?? Date.now()) + 15_000
   const found = list
-    .filter(r => {
-      const at = Date.parse(r.date)
-      return at >= from && at <= to && (hosts.size === 0 || hosts.has(hostOf(r.metadata?.uri)))
-    })
+    .filter(r => rec.replayIds.has(r.id))
     .map(r => ({
       id: r.id,
       uri: r.metadata?.uri ?? null,
@@ -262,6 +262,7 @@ async function linkReplay(rec) {
   return found
 }
 
+const UPLOAD_WAIT_S = 20
 let login = null
 
 /** Starts `replayio login` (an interactive browser sign-in) once; it finishes on its own. */
@@ -274,7 +275,12 @@ function startLogin() {
 
 /** Uploads a session's Replay recordings that are not uploaded yet. */
 async function uploadReplay(rec, { login: signIn = true } = {}) {
-  const linked = rec.replay?.length ? rec.replay : await linkReplay(rec)
+  let linked = await linkReplay(rec)
+  // Replay Chromium finishes writing a recording after the browser closes, and an unfinished one can't upload.
+  for (let i = 0; i < UPLOAD_WAIT_S && linked.some(r => r.recordingStatus === 'recording'); i++) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    linked = await linkReplay(rec)
+  }
   const pending = linked.filter(r => r.uploadStatus !== 'uploaded' && r.recordingStatus !== 'recording').map(r => r.id)
   if (pending.length === 0 && linked.length === 0) throw new Error('no Replay recording was made for this session (was it Replay Chromium with RECORD_ALL_CONTENT=1?)')
   if (pending.length) {

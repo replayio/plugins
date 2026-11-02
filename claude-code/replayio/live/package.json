@@ -4,7 +4,8 @@
   "description": "Builds live/tracer.js, live/detect.mjs and live/vendor/ for the rrweb players: npm install && npm run build",
   "type": "module",
   "scripts": {
-    "build": "node build.mjs && node sync-hosts.mjs"
+    "build": "node build.mjs && node sync-hosts.mjs",
+    "test": "node --test test/replay-link.test.mjs"
   },
   "devDependencies": {
     "@replayio-app-building/session-recorder": "0.17.1",

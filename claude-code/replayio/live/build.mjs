@@ -68,7 +68,21 @@ import { startSession } from "@replayio-app-building/session-recorder";
       return;
     }
 
+    // In Replay Chromium, the id of the recording this document is part of: what ties the rrweb
+    // stream to its Replay recording exactly. Absent in other browsers.
+    let reportedRecording = false;
+    const reportRecording = () => {
+      if (reportedRecording) return;
+      try {
+        const id = window.__RECORD_REPLAY_ARGUMENTS__?.getRecordingId?.();
+        if (!id) return;
+        reportedRecording = true;
+        emit(JSON.stringify([{ kind: "replayRecording", id: String(id) }]));
+      } catch {}
+    };
+
     const flush = () => {
+      reportRecording();
       const packets = session.getSessionData();
       if (packets.length === 0) return;
       emit(JSON.stringify(packets));
