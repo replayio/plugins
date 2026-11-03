@@ -111,7 +111,7 @@ else uses `REPLAY_QA_API_BASE`, `REPLAY_QA_URL` or qa.replay.io. See Signing in 
 - A Claude Code build with function hooks, enabled with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
 - A terminal with the kitty graphics protocol (Ghostty, kitty) for the inline picture. Elsewhere the
   row shows its controls and **Open in browser**.
-- Replay Chromium (`npx @replayio/replay install`) for the headless renderer (`REPLAY_LIVE_CHROME`
+- Replay Chromium (`npx @replayio/replay@0.22.12 install`) for the headless renderer (`REPLAY_LIVE_CHROME`
   points at another Chromium-based browser).
 
 ## Development
