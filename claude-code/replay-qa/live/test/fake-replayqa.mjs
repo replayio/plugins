@@ -29,7 +29,7 @@ if (args[0] === 'recording-events' && process.env.FAKE_REPLAYQA_READER_LOG) {
   await new Promise(() => {})
 }
 if (args[0] !== 'run') {
-  const [real, ...realArgs] = (process.env.FAKE_REPLAYQA_REAL ?? 'npx --yes replayqa@0.6.0').split(' ')
+  const [real, ...realArgs] = (process.env.FAKE_REPLAYQA_REAL ?? 'npx --yes replayqa@0.7.0').split(' ')
   process.exit(spawnSync(real, [...realArgs, ...args], { stdio: 'inherit' }).status ?? 1)
 }
 const option = name => { const i = args.indexOf(name); return i === -1 ? undefined : args[i + 1] }

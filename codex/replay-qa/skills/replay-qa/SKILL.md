@@ -5,24 +5,30 @@ description: "Use when running Replay QA against production, staging, PR preview
 
 # Replay QA
 
-Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.6.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
+Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.7.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
 
 This Codex package is for QA runs against production, staging, PR previews, and other reachable app URLs. Direct Replay.io recording and MCP debugging belong to the `replayio` / `codex-pro` package.
 
 ## Authentication
 
-When the Replay QA MCP server is connected, use its sign-in, so the user needs no second login. Prefer its tools (`list_projects`, `list_bugs`, `get_bug`, `set_bug_status` and so on) for reads and changes. `detect` and `link` need no sign-in. For a CLI command that does, such as `run` or `proxy`, call `create_cli_credential` and run that one process with the result:
+When the Replay QA MCP server is connected, use its sign-in, so the user needs no second login. Prefer its tools (`list_projects`, `list_bugs`, `get_bug`, `set_bug_status` and so on) for reads and changes. `detect` and `link` need no sign-in. Before the first CLI command that does, such as `run` or `proxy`, sign the CLI in through the server, once per machine:
 
 ```bash
-REPLAY_QA_API_KEY="<credential>" REPLAY_QA_URL="<qa_url>" npx --yes replayqa@0.6.0 run ...
+npx --yes replayqa@0.7.0 login --mcp-challenge
 ```
 
-The credential is single-use and expires in minutes, so get a new one for each process, and do not repeat it to the user. The CLI refreshes the session itself, so a tunnel outlives it.
+Call `create_cli_credential` with the `code_challenge` it prints, then within a minute:
+
+```bash
+REPLAY_QA_URL="<qa_url>" npx --yes replayqa@0.7.0 login --mcp-credential "<credential>"
+```
+
+Later commands are signed in. If `qa_url` is not `https://qa.replay.io`, keep `REPLAY_QA_URL` set on them. The credential is useless without the secret the CLI kept, and it works once. If it expires, start again from `--mcp-challenge`.
 
 Being connected does not mean signed in, and not every server has `create_cli_credential` yet. If the server is not connected, a tool call says it is not signed in, or `create_cli_credential` is missing or fails, use the CLI with its own login instead. The CLI shares Replay's login cache. Authenticate once:
 
 ```bash
-npx --yes replayqa@0.6.0 login
+npx --yes replayqa@0.7.0 login
 ```
 
 If `SECRET_REPLAY_QA_API_KEY` is available and `REPLAY_QA_API_KEY` is not set, map it before running commands:
@@ -33,14 +39,14 @@ if [ -z "${REPLAY_QA_API_KEY:-}" ] && [ -n "${SECRET_REPLAY_QA_API_KEY:-}" ]; th
 fi
 ```
 
-Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.6.0 auth`.
+Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.7.0 auth`.
 
 ## Which Project
 
 Before creating or selecting a project for the user's code, run this in their folder:
 
 ```bash
-npx --yes replayqa@0.6.0 detect --json
+npx --yes replayqa@0.7.0 detect --json
 ```
 
 It reads files only and runs nothing from the folder.
@@ -61,9 +67,9 @@ When reporting setup, say whether the id was reused from `.replay/config.json`, 
 Use public or externally reachable URLs for the normal Replay QA workflow:
 
 ```bash
-npx --yes replayqa@0.6.0 full-qa https://pr-123--example.netlify.app "Run smoke QA across auth, onboarding, checkout, navigation, and persistence."
-npx --yes replayqa@0.6.0 full-qa https://staging.example.com "Test the release candidate."
-npx --yes replayqa@0.6.0 full-qa https://app.example.com "Regression test the production critical paths."
+npx --yes replayqa@0.7.0 full-qa https://pr-123--example.netlify.app "Run smoke QA across auth, onboarding, checkout, navigation, and persistence."
+npx --yes replayqa@0.7.0 full-qa https://staging.example.com "Test the release candidate."
+npx --yes replayqa@0.7.0 full-qa https://app.example.com "Regression test the production critical paths."
 ```
 
 ## Local Apps
@@ -75,7 +81,7 @@ Replay QA needs network access to the app under test. Do not create, scaffold, o
 Otherwise, from the app's repository, start its normal dev server behind the CLI's wrapper. The target URL is the stable browser-visible origin and the upstream URL is the dev server; their ports must differ:
 
 ```bash
-npx --yes replayqa@0.6.0 run http://localhost:3000 \
+npx --yes replayqa@0.7.0 run http://localhost:3000 \
   --upstream-url http://127.0.0.1:5173 \
   --app-command "npm run dev -- --host 0.0.0.0 --port 5173" \
   --project proj_123
@@ -84,14 +90,14 @@ npx --yes replayqa@0.6.0 run http://localhost:3000 \
 `run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
 
 ```bash
-npx --yes replayqa@0.6.0 proxy --project proj_123 --target-url http://localhost:3000
+npx --yes replayqa@0.7.0 proxy --project proj_123 --target-url http://localhost:3000
 ```
 
 Use `--allow` when the browser must reach additional local or private hosts. Pass `--public` to project creation when the user provides a public URL.
 
 ## Commands
 
-Every command prints JSON for agent use. `npx --yes replayqa@0.6.0 <command> --help` gives its options, and `npx --yes replayqa@0.6.0 skill` prints the CLI's full guide.
+Every command prints JSON for agent use. `npx --yes replayqa@0.7.0 <command> --help` gives its options, and `npx --yes replayqa@0.7.0 skill` prints the CLI's full guide.
 
 | Command | Purpose |
 | --- | --- |
@@ -119,14 +125,14 @@ Bug-type exclusions in the instructions (for example "Exclude accessibility.") s
 Common examples:
 
 ```bash
-npx --yes replayqa@0.6.0 status --watch
-npx --yes replayqa@0.6.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
-npx --yes replayqa@0.6.0 bugs --status open --details --save
-npx --yes replayqa@0.6.0 bug bug_id_here --save
-npx --yes replayqa@0.6.0 mark-bug bug_id_here fixed
-npx --yes replayqa@0.6.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
-npx --yes replayqa@0.6.0 rerun-journeys --bug-id bug_id_here
-npx --yes replayqa@0.6.0 report-missing-bug "Settings changes do not persist after refresh."
+npx --yes replayqa@0.7.0 status --watch
+npx --yes replayqa@0.7.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
+npx --yes replayqa@0.7.0 bugs --status open --details --save
+npx --yes replayqa@0.7.0 bug bug_id_here --save
+npx --yes replayqa@0.7.0 mark-bug bug_id_here fixed
+npx --yes replayqa@0.7.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
+npx --yes replayqa@0.7.0 rerun-journeys --bug-id bug_id_here
+npx --yes replayqa@0.7.0 report-missing-bug "Settings changes do not persist after refresh."
 ```
 
 ## Replay QA View

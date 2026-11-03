@@ -148,7 +148,7 @@
   function signInLine(data) {
     if (data.signIn) return data.signIn
     if (data.auth?.mcp?.length) return 'Signed in through the replay-qa MCP server.'
-    return data.auth?.existing ? 'Using your existing Replay sign-in.' : 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.6.0 login.'
+    return data.auth?.existing ? 'Using your existing Replay sign-in.' : 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.7.0 login.'
   }
 
   function draw() {

@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { isRunningStatus, jsonValues, parseQaCommand, parseQaOutput } from './detect.ts'
 
-const QA = 'npx --yes replayqa@0.6.0'
+const QA = 'npx --yes replayqa@0.7.0'
 
 test('recognizes the commands that start or follow QA work', () => {
   expect(parseQaCommand(`${QA} start-exploration --project-id proj-shop-1 --prompt "Explore checkout"`)).toEqual({

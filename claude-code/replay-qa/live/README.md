@@ -54,19 +54,20 @@ its own and stops it itself only once the tunnel is up, so stopping a run signal
 The plugin declares the Replay QA MCP server (`../.mcp.json`). Where that server offers `create_cli_credential`, sign in once with
 `/mcp`, and:
 
-- The hooks module asks the server's `create_cli_credential` tool for a single-use `mcl_` credential once, through the engine's
-  own connection and with no model involved, when a `/replayqa` command or a Replay QA tool call needs the relay signed in. The
+- The hooks module asks the relay for a code challenge, then asks the server's `create_cli_credential` tool for a single-use `mcl_`
+  credential bound to it once, through the engine's own connection and with no model involved, when a `/replayqa` command or a Replay QA tool call needs the relay signed in. The
   engine puts that call to the session's permission mode, and a `tool.check` hook allows the plugin's own. That hook only runs
   for a call made from a hook: from a button, a timer or a loop the engine skips it, and the person gets a dialog about a tool they
   never asked for. So nothing else here calls it through the engine, and the model calling the tool itself still asks. Plan mode
   does not let a hook loosen anything, so there a `/replayqa` on a server with the tool does show that dialog; it holds nothing up.
-- **The relay** exchanges that credential at `/api/oauth-token` (`mcp-auth.mjs`), holds the tokens in memory and refreshes them.
+- **The relay** keeps the verifier for that challenge and exchanges the credential at `/api/oauth-token` (`mcp-auth.mjs`), holds
+  the tokens in memory and refreshes them.
   It uses them for its own API calls, and passes the current access token to the `recording-events` readers it runs; a
   reader that outlives a token is started again and skips the rows it already applied. A token only goes to the server
   that issued it.
 - **`replayqa run` and `bootstrap`** each get a credential of their own as `REPLAY_QA_API_KEY`, which the relay mints on its sign-in by
-  calling the same tool at `<server>/api/mcp`. The CLI takes it out of its environment at startup, so the app doesn't inherit
-  it, and refreshes in memory, so a tunnel outlives the hour-long token.
+  calling the same tool at `<server>/api/mcp` and adding the verifier it kept. The CLI takes it out of its environment at startup, so the app doesn't inherit
+  it, redeems it at once, because it lasts a minute, and refreshes in memory, so a tunnel outlives the hour-long token.
 
 When the server isn't connected, needs a sign-in or has no such tool, all of this falls back to `REPLAY_QA_API_KEY`, then
 `~/.replay/profile/auth.json` (`replayqa login`), with nothing said unless there is no sign-in at all.
@@ -76,9 +77,10 @@ tools work on that sign-in as usual. A server can list its tools to anyone and a
 nothing about being signed in, and with no such tool the two fail alike. So the pane offers `/mcp` only when the server has
 actually asked for a sign-in, and otherwise says `replayqa login`, which always works.
 
-`replayqa` commands the model runs through Bash stay on those two. A credential can't reach them through a rewritten command: a
-`tool.call` rewrite stays out of the transcript file, but permission rules (`Bash(npx --yes replayqa@… *)` stops matching),
-permission prompts, an SDK's `permission_denials` and the person's own `PreToolUse` hooks all see the command as rewritten.
+The plugin hands no credential to `replayqa` commands the model runs through Bash. A `tool.call` rewrite stays out of the transcript
+file, but permission rules (`Bash(npx --yes replayqa@… *)` stops matching), permission prompts, an SDK's `permission_denials` and the
+person's own `PreToolUse` hooks all see the command as rewritten. The model can sign the CLI in itself, as the skill says, with
+`replayqa login --mcp-challenge` and `--mcp-credential`. What that puts in the transcript is useless without the secret the CLI kept.
 
 Credentials and tokens never go in a URL, a log line, a toast or the transcript. Routes only the hooks module may use take a
 header no page has (`hookToken`): a page's URL holds the relay's token, and a browser keeps its history.

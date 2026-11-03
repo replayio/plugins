@@ -11,6 +11,7 @@
 //   { projects: [{ id, name, journeys: [{ id, name }], runs: [{ id, journey_id, status,
 //       events: rrwebEvents[], live?: { perSecond }, notes?: [...] }], explorations: [...] }] }
 
+import { createHash } from 'node:crypto'
 import http from 'node:http'
 
 import { synthEvents } from './synth.mjs'
@@ -48,7 +49,7 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
   /** The bearer token of every API request, in order. */
   const tokens = []
   /** The OAuth side of the MCP sign-in: codes and refresh tokens are single-use, as on the real server. */
-  const oauth = { codes: new Set(), refresh: new Set(), requests: [], accepted: new Set(), generation: 0, mcpCalls: [], noCredentialTool: false }
+  const oauth = { codes: new Map(), refresh: new Set(), requests: [], accepted: new Set(), generation: 0, mcpCalls: [], noCredentialTool: false }
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     calls.push(`${req.method} ${url.pathname}${url.search}`)
@@ -70,7 +71,12 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
         res.end(JSON.stringify({ access_token: access, refresh_token: `mcr_refresh_${n}`, token_type: 'Bearer', expires_in: oauth.expiresIn ?? 3600 }))
       }
       const refuse = () => { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'invalid_grant' })) }
-      if (params.grant_type === 'authorization_code') return oauth.codes.delete(params.code) && params.client_id && params.code_verifier && params.redirect_uri ? issue() : refuse()
+      if (params.grant_type === 'authorization_code') {
+        const challenge = oauth.codes.get(params.code)
+        oauth.codes.delete(params.code)
+        const proved = challenge && createHash('sha256').update(params.code_verifier ?? '').digest('base64url') === challenge
+        return proved && params.client_id && params.redirect_uri ? issue() : refuse()
+      }
       if (params.grant_type === 'refresh_token') return params.client_id && oauth.refresh.delete(params.refresh_token) ? issue() : refuse()
       return refuse()
     }
@@ -81,7 +87,9 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
       if (!oauth.accepted.has(bearer)) { res.statusCode = 401; return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: 'Authentication required' } })) }
       oauth.mcpCalls.push(body.params?.name)
       if (oauth.noCredentialTool) return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: 'Unknown tool' }] } }))
-      return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: false, content: [{ type: 'text', text: JSON.stringify({ credential: api.credential(), qa_url: api.origin, expires_in: 600 }) }] } }))
+      const challenge = body.params?.arguments?.code_challenge
+      if (!challenge) return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: 'code_challenge is required' }] } }))
+      return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: false, content: [{ type: 'text', text: JSON.stringify({ credential: api.credential(challenge), qa_url: api.origin, expires_in: 600 }) }] } }))
     }
     tokens.push((req.headers.authorization ?? '').replace(/^Bearer /, ''))
     const json = (status, body) => {
@@ -178,10 +186,10 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
     oauth,
     /** A project whose every request answers `status`, as a broken preview does. */
     fail(projectId, status) { failing.set(projectId, status) },
-    /** A credential as `create_cli_credential` mints it; single-use. */
-    credential(code = `code-${++counter}`) {
-      oauth.codes.add(code)
-      return `mcl_${Buffer.from(JSON.stringify({ u: api.origin, i: 'client-1', c: code, v: 'verifier-1', r: 'http://127.0.0.1/callback' })).toString('base64url')}`
+    /** A credential as `create_cli_credential` mints it for a challenge; single-use, and useless without the verifier. */
+    credential(challenge, code = `code-${++counter}`) {
+      oauth.codes.set(code, challenge)
+      return `mcl_${Buffer.from(JSON.stringify({ u: api.origin, i: 'client-1', c: code, r: 'http://127.0.0.1/callback', h: challenge })).toString('base64url')}`
     },
     /** Every MCP access token issued so far stops working, as if an hour had passed. */
     expireTokens() { oauth.accepted.clear() },
