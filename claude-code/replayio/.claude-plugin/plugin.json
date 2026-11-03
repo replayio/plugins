@@ -1,6 +1,6 @@
 {
   "name": "replayio",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Use Replay.io Pro from Claude Code: every agent-browser session runs in Replay Chromium and is recorded as an rrweb stream to a .rrweb file, with an inline player that streams it live or replays it, plus Replay MCP debugging and worker/critic proof-loop subagents.",
   "author": {
     "name": "Replay",
