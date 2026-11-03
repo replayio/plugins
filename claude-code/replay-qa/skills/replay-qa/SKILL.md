@@ -1,19 +1,19 @@
 ---
 name: "replay-qa"
 description: "Managed E2E testing service for finding bugs and adversarial verification"
-allowed-tools: Bash(npx --yes replayqa@0.4.0 *)
+allowed-tools: Bash(npx --yes replayqa@0.6.0 *)
 ---
 
 # Replay QA
 
-Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.4.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
+Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.6.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
 
 ## Current Replay QA Context
 
 This block is injected when the skill loads. If shell execution is disabled or auth is missing, use the message to decide which setup step to run next.
 
 ```!
-npx --yes replayqa@0.4.0 context
+npx --yes replayqa@0.6.0 context
 ```
 
 ## Authentication
@@ -21,16 +21,20 @@ npx --yes replayqa@0.4.0 context
 The CLI shares Replay's login cache. Authenticate once:
 
 ```bash
-npx --yes replayqa@0.4.0 login
+npx --yes replayqa@0.6.0 login
 ```
 
-Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.4.0 auth`.
+Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.6.0 auth`.
+
+This plugin also declares the Replay QA MCP server (`replay-qa`), whose tools work once the user signs in to it with `/mcp`. Where that server offers `create_cli_credential`, the live views and the tunnels `/replayqa` starts run on that sign-in too, with no `replayqa login`. Production does not offer it yet: until it does they need `replayqa login`, even for someone signed in through `/mcp`. The `replayqa` commands you run through Bash always use the sources above: the plugin can't hand them a credential without it showing in permission prompts and hooks. If they report no sign-in, ask the user to run `replayqa login`, or use the MCP server's tools.
 
 ## Project Reuse
 
-Project ids are resolved in this order: `--project <id or URL>`, then `REPLAY_QA_PROJECT_ID`, then `qa-project-id` in `.replay/config.json` at the git root. Reuse the stored project for all Replay QA work in this repo. Do not create a duplicate unless the user explicitly asks for a new project or the stored one is proven invalid for the current account.
+Project ids are resolved in this order: `--project <id or URL>`, then `REPLAY_QA_PROJECT_ID`, then `qa-project-id` in the nearest `.replay/config.json` from the current folder up to the git root. Reuse the stored project for all Replay QA work in that folder. Do not create a duplicate unless the user explicitly asks for a new project or the stored one is proven invalid for the current account.
 
-If the user gives a dashboard URL, pass it with `--project`. If there is no project, `bootstrap` and `full-qa` create one and write its id to `.replay/config.json`, preserving other keys.
+Run `npx --yes replayqa@0.6.0 detect --json` first to see what a folder holds. If it reports `projects`, use those and don't look for apps; with several (a monorepo), ask which one, and run from its folder or pass it with `--project`. With none, its `apps` are suggestions to confirm with the user: ports are guesses, and apps collide on them. Each has a `setup.command` that starts the app and its tunnel. It reads files only and runs nothing from the folder.
+
+If the user gives a dashboard URL, pass it with `--project`; `npx --yes replayqa@0.6.0 link <id or URL>` links the folder to a project that already exists. If there is no project, `bootstrap` and `full-qa` create one and write its id to `.replay/config.json`, preserving other keys. Without a config, a package in a monorepo keeps its own, so each app can be its own project.
 
 When reporting setup, say whether the id was reused from `.replay/config.json`, passed explicitly, read from the environment, or created and written back.
 
@@ -41,7 +45,7 @@ Replay QA needs network access to the app under test. Do not create, scaffold, o
 From the app's repository, start its normal dev server behind the CLI's wrapper. The target URL is the stable browser-visible origin and the upstream URL is the dev server; their ports must differ:
 
 ```bash
-npx --yes replayqa@0.4.0 run http://localhost:3000 \
+npx --yes replayqa@0.6.0 run http://localhost:3000 \
   --upstream-url http://127.0.0.1:5173 \
   --app-command "npm run dev -- --host 0.0.0.0 --port 5173" \
   --project proj_123
@@ -50,17 +54,19 @@ npx --yes replayqa@0.4.0 run http://localhost:3000 \
 `run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
 
 ```bash
-npx --yes replayqa@0.4.0 proxy --project proj_123 --target-url http://localhost:3000
+npx --yes replayqa@0.6.0 proxy --project proj_123 --target-url http://localhost:3000
 ```
 
 Use `--allow` when the browser must reach additional local or private hosts. Pass `--public` to project creation when the user provides a public URL.
 
 ## Commands
 
-Every command prints JSON for agent use. `npx --yes replayqa@0.4.0 <command> --help` gives its options, and `npx --yes replayqa@0.4.0 skill` prints the CLI's full guide.
+Every command prints JSON for agent use. `npx --yes replayqa@0.6.0 <command> --help` gives its options, and `npx --yes replayqa@0.6.0 skill` prints the CLI's full guide.
 
 | Command | Purpose |
 | --- | --- |
+| `detect [folder]` | What a folder holds: the projects its configs name, or else the packages that look like apps, each with the command that sets it up. |
+| `link <id or URL>` | Link this folder to a project that already exists, writing `qa-project-id`. |
 | `full-qa [url] [instructions]` | Create or reuse a project, show status and reverse-proxy setup, fetch open bug details, and print next steps. |
 | `bootstrap [url] [instructions]` | Create or reuse a project, then show details, status, and reverse-proxy setup. |
 | `context` | Concise current project context, status, and open bug summaries. |
@@ -83,14 +89,14 @@ Bug-type exclusions in the instructions (for example "Exclude accessibility.") s
 Common examples:
 
 ```bash
-npx --yes replayqa@0.4.0 status --watch
-npx --yes replayqa@0.4.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
-npx --yes replayqa@0.4.0 bugs --status open --details --save
-npx --yes replayqa@0.4.0 bug bug_id_here --save
-npx --yes replayqa@0.4.0 mark-bug bug_id_here fixed
-npx --yes replayqa@0.4.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
-npx --yes replayqa@0.4.0 rerun-journeys --bug-id bug_id_here
-npx --yes replayqa@0.4.0 report-missing-bug "Settings changes do not persist after refresh."
+npx --yes replayqa@0.6.0 status --watch
+npx --yes replayqa@0.6.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
+npx --yes replayqa@0.6.0 bugs --status open --details --save
+npx --yes replayqa@0.6.0 bug bug_id_here --save
+npx --yes replayqa@0.6.0 mark-bug bug_id_here fixed
+npx --yes replayqa@0.6.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
+npx --yes replayqa@0.6.0 rerun-journeys --bug-id bug_id_here
+npx --yes replayqa@0.6.0 report-missing-bug "Settings changes do not persist after refresh."
 ```
 
 ## Slash Commands
@@ -106,14 +112,14 @@ This plugin also ships command files in the plugin `commands/` directory. Invoke
 | `/replay-qa:rerun-journeys` | Use supported journey retry alternatives. |
 | `/replay-qa:report-missing-bug` | Ask Replay QA to investigate a missed issue. |
 
-With function hooks enabled the plugin also adds `/replayqa` (no namespace) for the live views: `/replayqa canvas [project]`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`.
+With function hooks enabled the plugin also adds `/replayqa` (no namespace). With no argument it follows the session's folder: one project opens its canvas, several draw an index to choose from, and none draw the list to set one up, with one action per app to start it and its tunnel. `/replayqa canvas [project]`, `/replayqa setup` (the list, even where a project is configured), `/replayqa use <project>`, `/replayqa test <url>`, `/replayqa start|stop <app path>`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`, `/replayqa status`.
 
 ## Live Views
 
 When the Claude Code session has function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`), this plugin streams Replay QA work into the conversation. You do not run anything extra:
 
 - Starting an exploration (`start-exploration`), marking a bug fixed (`mark-bug … fixed`, which makes Replay QA re-test the journey), or reporting a missed bug (`report-missing-bug`) turns that call's result into a live rrweb player. The project is followed, so every exploration and journey run that is executing streams in parallel, and finished runs can be opened from the canvas.
-- `/replayqa canvas` opens a canvas of every journey in the project: running ones stream live, finished ones load on click. `/replayqa live` lists what is streaming, and `/replayqa open` opens a player in the browser.
+- `/replayqa` opens a canvas of every journey in the folder's project: running ones stream live, finished ones load on click. It never opens a project seen in another folder. `/replayqa live` lists what is streaming, and `/replayqa open` opens a player in the browser.
 - The streams are read with `replayqa recording-events` through a local relay; nothing is sent anywhere else.
 
 When you start an exploration for the user, say that the live player is in the result and mention `/replayqa canvas`. Do not poll the stream yourself: keep using `status` and `bugs` for state, and read the bug reports for findings.

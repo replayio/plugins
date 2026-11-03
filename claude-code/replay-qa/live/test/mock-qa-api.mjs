@@ -19,6 +19,8 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
   const started = new Map() // recording source id -> when it began revealing
   const state = structuredClone(scenario)
   const calls = []
+  /** project id -> the status every request about it answers. */
+  const failing = new Map()
 
   const tasks = []
   for (const p of state.projects) {
@@ -43,20 +45,54 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
   }
 
   let counter = 0
+  /** The bearer token of every API request, in order. */
+  const tokens = []
+  /** The OAuth side of the MCP sign-in: codes and refresh tokens are single-use, as on the real server. */
+  const oauth = { codes: new Set(), refresh: new Set(), requests: [], accepted: new Set(), generation: 0, mcpCalls: [], noCredentialTool: false }
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x')
     calls.push(`${req.method} ${url.pathname}${url.search}`)
     let body = {}
+    let rawBody = ''
     if (req.method !== 'GET') {
-      let text = ''
-      for await (const chunk of req) text += chunk
-      try { body = text ? JSON.parse(text) : {} } catch {}
+      for await (const chunk of req) rawBody += chunk
+      try { body = rawBody ? JSON.parse(rawBody) : {} } catch {}
     }
+    if (url.pathname === '/api/oauth-token') {
+      const params = Object.fromEntries(new URLSearchParams(rawBody))
+      oauth.requests.push(params)
+      const issue = () => {
+        const n = ++oauth.generation
+        const access = `mcp_access_${n}`
+        oauth.accepted.add(access)
+        oauth.refresh.add(`mcr_refresh_${n}`)
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ access_token: access, refresh_token: `mcr_refresh_${n}`, token_type: 'Bearer', expires_in: oauth.expiresIn ?? 3600 }))
+      }
+      const refuse = () => { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'invalid_grant' })) }
+      if (params.grant_type === 'authorization_code') return oauth.codes.delete(params.code) && params.client_id && params.code_verifier && params.redirect_uri ? issue() : refuse()
+      if (params.grant_type === 'refresh_token') return params.client_id && oauth.refresh.delete(params.refresh_token) ? issue() : refuse()
+      return refuse()
+    }
+    // The MCP endpoint, for a caller holding an OAuth token: what a signed-in relay mints from.
+    if (url.pathname === '/api/mcp') {
+      const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '')
+      res.setHeader('content-type', 'application/json')
+      if (!oauth.accepted.has(bearer)) { res.statusCode = 401; return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: 'Authentication required' } })) }
+      oauth.mcpCalls.push(body.params?.name)
+      if (oauth.noCredentialTool) return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: 'Unknown tool' }] } }))
+      return res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: false, content: [{ type: 'text', text: JSON.stringify({ credential: api.credential(), qa_url: api.origin, expires_in: 600 }) }] } }))
+    }
+    tokens.push((req.headers.authorization ?? '').replace(/^Bearer /, ''))
     const json = (status, body) => {
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(body))
     }
     if (!/^Bearer .+/.test(req.headers.authorization ?? '')) return json(401, { error: 'missing token' })
+    // An MCP token is good only until it is rotated away; a plain one (tests, demos) is good always.
+    if (/^Bearer mcp_/.test(req.headers.authorization) && !oauth.accepted.has(req.headers.authorization.slice(7))) return json(401, { error: 'expired token' })
+    const failingId = url.pathname.replace(/^\/api\/v1\/?/, '').split('/')[1]
+    if (failing.has(failingId)) return json(failing.get(failingId), { error: 'broken' })
     const parts = url.pathname.replace(/^\/api\/v1\/?/, '').split('/').filter(Boolean)
     const project = state.projects.find(p => p.id === parts[1])
     // PATCH /bugs/:id { status: 'fixed' } -> the affected journey is re-tested: a new live run
@@ -75,6 +111,12 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
       const bug = state.projects.flatMap(p => p.bugs ?? []).find(b => b.id === parts[1])
       return bug ? json(200, bug) : json(404, { error: 'no such bug' })
     }
+    // POST /projects -> a new project, as replayqa and the scripts make them
+    if (req.method === 'POST' && parts[0] === 'projects' && parts.length === 1) {
+      const created = { id: `proj-created-${++counter}`, name: body.name ?? 'Created', target_url: body.target_url ?? null, journeys: [], runs: [], explorations: [] }
+      state.projects.push(created)
+      return json(201, { id: created.id, name: created.name, target_url: created.target_url, status: 'active' })
+    }
     if (parts[0] === 'projects' && parts.length === 1) return json(200, { items: state.projects.map(p => ({ id: p.id, name: p.name })) })
     if (parts[0] !== 'projects' || !project) return json(404, { error: 'not found' })
     const sub = parts[2]
@@ -89,7 +131,10 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
       started.set(e.id, Date.now())
       return json(201, { id: e.id, project_id: project.id, prompt: e.prompt, status: 'in-progress', journeys_created: 0, journeys_updated: 0, started_at: new Date().toISOString() })
     }
-    if (!sub) return json(200, { id: project.id, name: project.name, target_url: 'http://localhost:3000', status: 'active' })
+    // No tunnel is ever offered: `replayqa run` waits for one, as it does before a real one is ready.
+    if (sub === 'status') return json(200, { project_id: project.id, status: 'active', open_bugs: 0 })
+    if (sub === 'reverse-proxy') return json(200, { enabled: true, configured: false, state: 'pending', ready: false, frpc_connected: false, tunnel: null, target_url: project.target_url })
+    if (!sub) return json(200, { id: project.id, name: project.name, target_url: project.target_url ?? 'http://localhost:3000', use_reverse_proxy: true, status: 'active' })
     if (sub === 'journeys') {
       return page((project.journeys ?? []).map(j => {
         const last = [...(project.runs ?? [])].reverse().find(r => r.journey_id === j.id)
@@ -127,7 +172,19 @@ export async function startMock(scenario, { maxPageBytes = 1_500_000, chunkBytes
 
   const api = {
     url: `http://127.0.0.1:${server.address().port}/api/v1`,
+    origin: `http://127.0.0.1:${server.address().port}`,
     calls,
+    tokens,
+    oauth,
+    /** A project whose every request answers `status`, as a broken preview does. */
+    fail(projectId, status) { failing.set(projectId, status) },
+    /** A credential as `create_cli_credential` mints it; single-use. */
+    credential(code = `code-${++counter}`) {
+      oauth.codes.add(code)
+      return `mcl_${Buffer.from(JSON.stringify({ u: api.origin, i: 'client-1', c: code, v: 'verifier-1', r: 'http://127.0.0.1/callback' })).toString('base64url')}`
+    },
+    /** Every MCP access token issued so far stops working, as if an hour had passed. */
+    expireTokens() { oauth.accepted.clear() },
     /** A live run or exploration finishes: all its events exist and its status flips. */
     finish(id) {
       started.delete(id)
