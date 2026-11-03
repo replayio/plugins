@@ -7,7 +7,7 @@
       "name": "codex",
       "type": "registry:item",
       "title": "Replay QA Codex Plugin",
-      "description": "Codex Replay QA app for running QA against production, staging, and PR preview URLs with packaged project, status, bug, journey, and exploration scripts.",
+      "description": "Codex Replay QA app for running QA against production, staging, and PR preview URLs through the replayqa CLI for project, status, bug, journey, and exploration workflows.",
       "files": [
         {
           "path": "codex/replay-qa/.codex-plugin/plugin.json",
@@ -43,86 +43,6 @@
           "path": "codex/replay-qa/skills/replay-qa/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replay-qa/SKILL.md"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/bootstrap.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/bootstrap.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/bug.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/bug.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/bugs.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/bugs.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/context.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/context.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/explorations.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/explorations.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/full-qa.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/full-qa.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/journeys.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/journeys.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/mark-bug.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/mark-bug.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/package.json",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/package.json"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/replay-qa-lib.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/report-missing-bug.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/rerun-journeys.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/reverse-proxy.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/start-exploration.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/start-exploration.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/status.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/status.js"
-        },
-        {
-          "path": "codex/replay-qa/skills/replay-qa/scripts/test-runs.js",
-          "type": "registry:file",
-          "target": "~/skills/replay-qa/scripts/test-runs.js"
         }
       ]
     },
@@ -130,7 +50,7 @@
       "name": "codex-pro",
       "type": "registry:item",
       "title": "Replay.io Pro Codex Plugin",
-      "description": "Codex Replay.io dev tools bundle for the direct Replay MCP server, Replay Chromium recordings, worker/critic proof loops, browser lifecycle screencast capture, ffmpeg-backed MP4 output, side-by-side video stitching, upload hooks, and debugging widgets.",
+      "description": "Codex Replay.io dev tools bundle for the direct Replay MCP server, Replay Chromium recordings with temporary read-only Chrome profile import, rrweb streams of every agent-browser session watchable live or afterwards, worker/critic proof loops, upload hooks, and debugging widgets.",
       "files": [
         {
           "path": "codex/replayio/.app.json",
@@ -178,21 +98,6 @@
           "target": "~/scripts/browser-close.js"
         },
         {
-          "path": "codex/replayio/scripts/stitch-videos.js",
-          "type": "registry:file",
-          "target": "~/scripts/stitch-videos.js"
-        },
-        {
-          "path": "codex/replayio/scripts/close_browsers_and_upload.sh",
-          "type": "registry:file",
-          "target": "~/scripts/close_browsers_and_upload.sh"
-        },
-        {
-          "path": "codex/replayio/scripts/replayio_browser_lifecycle_hook.sh",
-          "type": "registry:file",
-          "target": "~/scripts/replayio_browser_lifecycle_hook.sh"
-        },
-        {
           "path": "codex/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replayio/SKILL.md"
@@ -226,6 +131,41 @@
           "path": "codex/replayio/skills/replayio/scripts/package.json",
           "type": "registry:file",
           "target": "~/skills/replayio/scripts/package.json"
+        },
+        {
+          "path": "codex/replayio/live/relay.mjs",
+          "type": "registry:file",
+          "target": "~/live/relay.mjs"
+        },
+        {
+          "path": "codex/replayio/live/rrweb.mjs",
+          "type": "registry:file",
+          "target": "~/live/rrweb.mjs"
+        },
+        {
+          "path": "codex/replayio/live/detect.mjs",
+          "type": "registry:file",
+          "target": "~/live/detect.mjs"
+        },
+        {
+          "path": "codex/replayio/live/player.html",
+          "type": "registry:file",
+          "target": "~/live/player.html"
+        },
+        {
+          "path": "codex/replayio/live/tracer.js",
+          "type": "registry:file",
+          "target": "~/live/tracer.js"
+        },
+        {
+          "path": "codex/replayio/live/vendor/rrweb.min.js",
+          "type": "registry:file",
+          "target": "~/live/vendor/rrweb.min.js"
+        },
+        {
+          "path": "codex/replayio/live/vendor/rrweb.min.css",
+          "type": "registry:file",
+          "target": "~/live/vendor/rrweb.min.css"
         }
       ]
     },
@@ -233,7 +173,7 @@
       "name": "cursor",
       "type": "registry:item",
       "title": "Replay.io Cursor Plugin",
-      "description": "Cursor plugin bundle for Replay browser recording, Replay MCP configuration, hooks, scripts, worker/critic proof-loop prompts, and agent skill guidance.",
+      "description": "Cursor plugin bundle for Replay browser recording with temporary read-only Chrome profile import, rrweb streams watchable live or afterwards, Replay MCP configuration, hooks, scripts, worker/critic proof-loop prompts, and agent skill guidance.",
       "files": [
         {
           "path": "cursor/replayio/.cursor-plugin/plugin.json",
@@ -261,16 +201,6 @@
           "target": "~/mcp.json"
         },
         {
-          "path": "cursor/replayio/scripts/post_bash_upload.sh",
-          "type": "registry:file",
-          "target": "~/scripts/post_bash_upload.sh"
-        },
-        {
-          "path": "cursor/replayio/scripts/stop_close_and_upload.sh",
-          "type": "registry:file",
-          "target": "~/scripts/stop_close_and_upload.sh"
-        },
-        {
           "path": "cursor/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/skills/replayio/SKILL.md"
@@ -294,6 +224,51 @@
           "path": "cursor/replayio/skills/replayio/references/workflows.md",
           "type": "registry:file",
           "target": "~/skills/replayio/references/workflows.md"
+        },
+        {
+          "path": "cursor/replayio/live/relay.mjs",
+          "type": "registry:file",
+          "target": "~/live/relay.mjs"
+        },
+        {
+          "path": "cursor/replayio/live/rrweb.mjs",
+          "type": "registry:file",
+          "target": "~/live/rrweb.mjs"
+        },
+        {
+          "path": "cursor/replayio/live/detect.mjs",
+          "type": "registry:file",
+          "target": "~/live/detect.mjs"
+        },
+        {
+          "path": "cursor/replayio/live/player.html",
+          "type": "registry:file",
+          "target": "~/live/player.html"
+        },
+        {
+          "path": "cursor/replayio/live/tracer.js",
+          "type": "registry:file",
+          "target": "~/live/tracer.js"
+        },
+        {
+          "path": "cursor/replayio/live/vendor/rrweb.min.js",
+          "type": "registry:file",
+          "target": "~/live/vendor/rrweb.min.js"
+        },
+        {
+          "path": "cursor/replayio/live/vendor/rrweb.min.css",
+          "type": "registry:file",
+          "target": "~/live/vendor/rrweb.min.css"
+        },
+        {
+          "path": "cursor/replayio/scripts/browser-open.js",
+          "type": "registry:file",
+          "target": "~/scripts/browser-open.js"
+        },
+        {
+          "path": "cursor/replayio/scripts/browser-close.js",
+          "type": "registry:file",
+          "target": "~/scripts/browser-close.js"
         }
       ]
     },
@@ -301,7 +276,7 @@
       "name": "claude-code",
       "type": "registry:item",
       "title": "Replay.io Claude Code Plugin",
-      "description": "Claude Code plugin bundle for Replay QA API scripts, slash commands, and agent skill guidance, plus live views: inline rrweb players for explorations and journey runs, and a canvas that streams every journey in parallel.",
+      "description": "Claude Code plugin bundle for the replayqa CLI, slash commands, and agent skill guidance, plus live views: inline rrweb players for explorations and journey runs, and a canvas that streams every journey in parallel.",
       "docs": "After installing, start Claude Code from the project root. The plugin should load automatically from `.claude/skills/replay-qa`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replay-qa\n```\n\nReplay QA commands are provided by the plugin, including `/replay-qa:run-full-qa`, `/replay-qa:qa-status`, `/replay-qa:qa-bugs`, `/replay-qa:start-new-exploration`, `/replay-qa:rerun-journeys`, and `/replay-qa:report-missing-bug`.\n\nLive views (explorations and journey runs streaming into the conversation, and `/replayqa canvas`) use Claude Code function hooks: set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (for example in the `env` block of `~/.claude/settings.json`), use a kitty-graphics terminal such as Ghostty or kitty, and install Replay Chromium with `npx @replayio/replay install`.",
       "files": [
         {
@@ -353,86 +328,6 @@
           "path": "claude-code/replay-qa/skills/replay-qa/SKILL.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/skills/replay-qa/SKILL.md"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bootstrap.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bootstrap.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bug.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bug.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/bugs.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/bugs.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/context.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/context.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/explorations.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/explorations.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/full-qa.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/full-qa.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/journeys.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/journeys.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/mark-bug.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/mark-bug.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/package.json",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/package.json"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/replay-qa-lib.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/report-missing-bug.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/report-missing-bug.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/rerun-journeys.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/rerun-journeys.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/reverse-proxy.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/reverse-proxy.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/start-exploration.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/start-exploration.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/status.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/status.js"
-        },
-        {
-          "path": "claude-code/replay-qa/skills/replay-qa/scripts/test-runs.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replay-qa/skills/replay-qa/scripts/test-runs.js"
         },
         {
           "path": "claude-code/replay-qa/assets/replay-logo.png",
@@ -505,7 +400,7 @@
       "name": "claude-pro",
       "type": "registry:item",
       "title": "Replay.io Pro Claude Code Plugin",
-      "description": "Claude Code Replay.io Pro bundle for Replay Chromium recordings, inline live and scrubbable browser players, verified MP4 evidence, Replay MCP debugging, lifecycle hooks, and worker/critic proof-loop subagents.",
+      "description": "Claude Code Replay.io Pro bundle: every agent-browser session runs in Replay Chromium (with temporary read-only Chrome profile import) and is recorded as an rrweb stream, with an inline player that streams it live or replays it, plus Replay MCP debugging and worker/critic proof-loop subagents.",
       "docs": "After installing, start Claude Code from the project root. The Pro skill should load from `.claude/skills/replayio`, and worker/critic subagents are installed at `.claude/agents/replay-worker.md` and `.claude/agents/replay-critic.md`. If you want to force-load it for this session, run:\n\n```bash\nclaude --plugin-dir .claude/skills/replayio\n```\n\nUse `/replayio:record-replay` for direct browser evidence or `/replayio:replay-proof-loop` for the worker/critic proof loop when commands are available.\n\nInline live players (a live, scrubbable view of each browser Claude opens, shown in the transcript) use Claude Code function hooks: set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (for example in the `env` block of `~/.claude/settings.json`) and use a kitty-graphics terminal such as Ghostty or kitty. `/replayio` lists recordings and `/replayio library` opens all of them in the browser.",
       "files": [
         {
@@ -539,41 +434,6 @@
           "target": "~/.claude/skills/replayio/hooks/scrubber.tsx"
         },
         {
-          "path": "claude-code/replayio/hooks/mcp/card.ts",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/card.ts"
-        },
-        {
-          "path": "claude-code/replayio/hooks/mcp/cards.ts",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/cards.ts"
-        },
-        {
-          "path": "claude-code/replayio/hooks/mcp/render.tsx",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/render.tsx"
-        },
-        {
-          "path": "claude-code/replayio/hooks/mcp/tools/index.ts",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/tools/index.ts"
-        },
-        {
-          "path": "claude-code/replayio/hooks/mcp/tools/overview.ts",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/tools/overview.ts"
-        },
-        {
-          "path": "claude-code/replayio/hooks/mcp/tools/code.ts",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/tools/code.ts"
-        },
-        {
-          "path": "claude-code/replayio/hooks/mcp/tools/react.ts",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/hooks/mcp/tools/react.ts"
-        },
-        {
           "path": "claude-code/replayio/tsconfig.json",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/tsconfig.json"
@@ -592,11 +452,6 @@
           "path": "claude-code/replayio/live/player.html",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/live/player.html"
-        },
-        {
-          "path": "claude-code/replayio/live/library.html",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/live/library.html"
         },
         {
           "path": "claude-code/replayio/live/tracer.js",
@@ -679,21 +534,6 @@
           "target": "~/.claude/skills/replayio/scripts/browser-close.js"
         },
         {
-          "path": "claude-code/replayio/scripts/stitch-videos.js",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/scripts/stitch-videos.js"
-        },
-        {
-          "path": "claude-code/replayio/scripts/close_browsers_and_upload.sh",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/scripts/close_browsers_and_upload.sh"
-        },
-        {
-          "path": "claude-code/replayio/scripts/replayio_browser_lifecycle_hook.sh",
-          "type": "registry:file",
-          "target": "~/.claude/skills/replayio/scripts/replayio_browser_lifecycle_hook.sh"
-        },
-        {
           "path": "claude-code/replayio/skills/replayio/SKILL.md",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/skills/replayio/SKILL.md"
@@ -717,6 +557,21 @@
           "path": "claude-code/replayio/skills/replayio/scripts/package.json",
           "type": "registry:file",
           "target": "~/.claude/skills/replayio/skills/replayio/scripts/package.json"
+        },
+        {
+          "path": "claude-code/replayio/live/rrweb.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/rrweb.mjs"
+        },
+        {
+          "path": "claude-code/replayio/live/detect.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/detect.mjs"
+        },
+        {
+          "path": "claude-code/replayio/live/sync-hosts.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replayio/live/sync-hosts.mjs"
         }
       ]
     },
@@ -724,7 +579,7 @@
       "name": "opencode",
       "type": "registry:item",
       "title": "Replay.io OpenCode Plugin",
-      "description": "OpenCode plugin bundle with Replay MCP config, Replay workflow guidance, OpenCode hooks, and worker/critic proof-loop subagents.",
+      "description": "OpenCode plugin bundle with temporary read-only Chrome profile import for Replay Chromium, rrweb streams watchable live or afterwards, Replay MCP config, Replay workflow guidance, OpenCode hooks, and worker/critic proof-loop subagents.",
       "files": [
         {
           "path": "opencode/replayio/.opencode/plugins/replayio.js",
@@ -750,6 +605,41 @@
           "path": "opencode/replayio/.opencode/agent/replay-critic.md",
           "type": "registry:file",
           "target": "~/.opencode/agent/replay-critic.md"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/relay.mjs",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/relay.mjs"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/rrweb.mjs",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/rrweb.mjs"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/detect.mjs",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/detect.mjs"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/player.html",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/player.html"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/tracer.js",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/tracer.js"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/vendor/rrweb.min.js",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/vendor/rrweb.min.js"
+        },
+        {
+          "path": "opencode/replayio/.opencode/replayio-live/vendor/rrweb.min.css",
+          "type": "registry:file",
+          "target": "~/.opencode/replayio-live/vendor/rrweb.min.css"
         }
       ]
     },

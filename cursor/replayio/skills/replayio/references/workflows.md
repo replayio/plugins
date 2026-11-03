@@ -6,6 +6,7 @@ Use the host agent browser with Replay Chromium selected by `AGENT_BROWSER_EXECU
 
 ```bash
 export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.replay/runtimes/Replay-Chromium.app/Contents/MacOS/Chromium"
+export AGENT_BROWSER_PROFILE="${AGENT_BROWSER_PROFILE:-Default}"
 export RECORD_ALL_CONTENT='1'
 export RECORD_REPLAY_VERBOSE='1'
 ```

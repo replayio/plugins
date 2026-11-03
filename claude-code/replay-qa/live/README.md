@@ -27,25 +27,22 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
 
 1. `hooks/register.tsx` (a Claude Code hooks module, listed under `modules` in `hooks/hooks.json`)
    starts `live/relay.mjs`, a zero-dependency Node server on 127.0.0.1 with a random port and token.
-2. When a Replay QA script starts work, the relay is told to *follow* the project. It reads
-   `GET /api/v1/projects/{project_id}/recording-events` for every exploration, test run and task that
-   is running, following each by cursor until the API says it is done, and keeps the rrweb events in
+2. When a `replayqa` command starts work, the relay is told to *follow* the project. It runs
+   `replayqa recording-events` for every exploration, test run and task that is running, until the
+   project's status says it is done, and keeps the rrweb events in
    memory and in `~/.claude/replay-qa-live/recordings/*.ndjson`, so a finished run is only fetched once.
 3. `player.html` plays one recording with rrweb's `Replayer`; `canvas.html` lays out many of them.
    The relay renders either in headless Replay Chromium and screencasts PNG frames, which the hooks
    module draws as an `Image` in the conversation.
 
-The API makes a few things necessary, handled in `qa-stream.mjs`: a response over 6 MB is a 502, so pages
-start at 20 events and halve until they fit (full snapshots are large); an rrweb event too big for one
-row arrives as `rrweb-chunk` rows that are joined back together; and a running recording is followed from
-the last row seen.
+`recording-events` owns what the API makes necessary: pages over its 6 MB limit are fetched smaller, and events too big for one row are joined back together. The CLI is pinned in `relay.mjs`, so a release cannot change this stream by itself. The relay still calls the API itself for the project overview it polls, as starting a process for each poll would be too slow.
 
 A project on another QA server (a PR preview, staging) is read from that server. The relay takes it
 from a running tunnel (`replayqa proxy|run --project <id> --qa-url <url>`, the command the server's own
 reverse-proxy runbook prints), or from what the hooks module saw: a dashboard URL given to
-`/replayqa canvas <url>`, `REPLAY_QA_API_BASE` or `REPLAY_QA_URL` on a script's command, `--qa-url` in a
-script's output, or `proxy.qa-url` in `.replay/config.json`. It remembers each in `servers.json`; anything
-else uses `REPLAY_QA_API_BASE`, `REPLAY_QA_URL` or qa.replay.io. Authentication is the same token the scripts use (`REPLAY_QA_API_KEY`,
+`/replayqa canvas <url>`, `REPLAY_QA_API_BASE` or `REPLAY_QA_URL` on a command, `--qa-url` in a
+command's output, or `proxy.qa-url` in `.replay/config.json`. It remembers each in `servers.json`; anything
+else uses `REPLAY_QA_API_BASE`, `REPLAY_QA_URL` or qa.replay.io. Recordings use the CLI's authentication; the overview reads the same sources (`REPLAY_QA_API_KEY`,
 `REPLAY_API_KEY`, `REPLAY_ACCESS_TOKEN`, or `~/.replay/profile/auth.json`).
 
 ## Requirements
@@ -59,7 +56,7 @@ else uses `REPLAY_QA_API_BASE`, `REPLAY_QA_URL` or qa.replay.io. Authentication 
 ## Development
 
 ```bash
-npm test         # the paging client and the relay, against a mock of the QA API
+npm test         # the relay, against a mock of the QA API; REPLAY_QA_CLI="node /path/to/replayqa-cli/bin.js" uses a checkout of the CLI
 npm run demo     # the mock API and the relay; prints a canvas URL to open in a browser
 ```
 
