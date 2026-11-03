@@ -87,7 +87,7 @@ const OLD_LAST_PROJECT_KEY = 'qa-last-project'
 /** The last project seen in a folder (its nearest config's, else its git root), under this and the folder. */
 const LAST_PROJECT_PREFIX = 'qa-last-project:'
 /** The pinned CLI, as the skill and the relay run it; REPLAY_QA_CLI runs a checkout instead. */
-const REPLAYQA = ['npx', '--yes', 'replayqa@0.6.0']
+const REPLAYQA = ['npx', '--yes', 'replayqa@0.7.0']
 /** The plugin's MCP server (.mcp.json), and the tool that lets a process run as the person who signed in to it. */
 const MCP_SERVER = 'replay-qa'
 const MCP_CREDENTIAL_TOOL = 'create_cli_credential'
@@ -372,7 +372,8 @@ async function mintCredential($: EngineInterface): Promise<Minted | null> {
       // Refused or not, one the person added under this name (say, a PR preview's) answers below.
     } catch {}
     try {
-      const result = await $.mcp.call(server, MCP_CREDENTIAL_TOOL, {})
+      const { code_challenge } = await relayJson<{ code_challenge: string }>($, '/auth/challenge', {})
+      const result = await $.mcp.call(server, MCP_CREDENTIAL_TOOL, { code_challenge })
       const text = result.content.find(block => block.type === 'text')?.text
       if (result.isError || !text) {
         // The engine answers a server's 401 as an errored result, and marks the server as needing a sign-in.
@@ -434,8 +435,8 @@ function signRelayIn($: EngineInterface, { force = false }: { force?: boolean } 
 function signInLine(): string {
   if (state.auth.mcp.length) return 'Signed in through the replay-qa MCP server.'
   if (state.auth.existing) return 'Using your existing Replay sign-in.'
-  if (state.mcpAnswer === 'needs-sign-in') return 'Not signed in: run /mcp and sign in to replay-qa, or run npx --yes replayqa@0.6.0 login.'
-  return 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.6.0 login: the replay-qa MCP server cannot share its sign-in with them yet.'
+  if (state.mcpAnswer === 'needs-sign-in') return 'Not signed in: run /mcp and sign in to replay-qa, or run npx --yes replayqa@0.7.0 login.'
+  return 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.7.0 login: the replay-qa MCP server cannot share its sign-in with them yet.'
 }
 
 // ------------------------------------------------------------------ folder

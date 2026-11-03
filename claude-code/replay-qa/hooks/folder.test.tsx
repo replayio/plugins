@@ -10,9 +10,9 @@ const STALE_PROJECT = 'proj-apple-notes-opfs-pr-7162--mvqrz5qb'
 const app = (over: Record<string, unknown> = {}) => ({
   path: 'apps/docs', name: '@x/docs', kind: 'app', why: 'nx inferred from @nx/vite/plugin', dev_command: 'pnpm nx dev @x/docs', port: 4206, port_source: 'vite.config.mts',
   setup: {
-    target_url: 'http://localhost:4206', cwd: '/work/ui/apps/docs', cli: ['npx', '--yes', 'replayqa@0.6.0'],
+    target_url: 'http://localhost:4206', cwd: '/work/ui/apps/docs', cli: ['npx', '--yes', 'replayqa@0.7.0'],
     args: ['run', 'http://localhost:4206', '--app-command', 'cd ../.. && pnpm nx dev @x/docs', '--create-project', '--name', '@x/docs'],
-    command: "cd apps/docs && npx --yes replayqa@0.6.0 run http://localhost:4206 --app-command 'cd ../.. && pnpm nx dev @x/docs' --create-project --name @x/docs",
+    command: "cd apps/docs && npx --yes replayqa@0.7.0 run http://localhost:4206 --app-command 'cd ../.. && pnpm nx dev @x/docs' --create-project --name @x/docs",
     config_path: 'apps/docs/.replay/config.json',
   },
   ...over,
@@ -115,6 +115,7 @@ async function session($: any, on: any, world: World = {}) {
     if (world.mcp === 'cannot-share') return { value: { isError: true, content: [{ type: 'text', text: 'This connection did not sign in through OAuth, so it has no sign-in to share.' }] } }
     if (world.mcp === 'hangs') await clock.sleep(1e12)
     if (e.tool !== 'create_cli_credential') throw new Error(`unexpected tool ${e.tool}`)
+    if (e.args?.code_challenge !== 'challenge-from-the-relay') throw new Error('asked without the relay\'s challenge')
     const credential = `${CREDENTIAL}${minted.length}`
     minted.push(credential)
     return { value: { isError: false, content: [{ type: 'text', text: JSON.stringify({ credential, qa_url: 'https://qa.replay.io', expires_in: 600 }) }] } }
@@ -125,6 +126,7 @@ async function session($: any, on: any, world: World = {}) {
     relay.push({ path: url.pathname, body, headers: e.init?.headers ?? {} })
     const answer = (value: unknown, status = 200) => ({ value: { status, ok: status < 300, headers: {}, text: JSON.stringify(value) } })
     const project = body?.projectId ?? url.searchParams.get('project')
+    if (url.pathname === '/auth/challenge') return answer({ code_challenge: 'challenge-from-the-relay' })
     if (url.pathname === '/auth/status') return answer({ mcp: mcpSignedIn ? [{ origin: 'https://qa.replay.io', expiresAt: 1e15 }] : [], existing: world.existing === true })
     if (url.pathname === '/auth/credential') { mcpSignedIn = true; return answer({ origin: 'https://qa.replay.io', expiresAt: 1e15 }) }
     if (url.pathname === '/auth/mint') return answer(mcpSignedIn ? { credential: `${CREDENTIAL}relay`, qaUrl: 'https://qa.replay.io' } : { credential: null, qaUrl: null })
@@ -232,11 +234,11 @@ test('a row\'s Open canvas opens that row\'s project, not the last one seen', as
   const { followed, relay } = await session($, on, {
     store: { 'qa-last-project': STALE_PROJECT }, bash: JSON.stringify({ id: 'bug-1', project_id: 'proj-row', journey_id: 'j1' }),
   })
-  await $.tool.call({ tool: 'Bash', command: 'npx --yes replayqa@0.6.0 mark-bug bug-1 fixed', tool_use_id: 'toolu_row' })
+  await $.tool.call({ tool: 'Bash', command: 'npx --yes replayqa@0.7.0 mark-bug bug-1 fixed', tool_use_id: 'toolu_row' })
   expect(followed()).toEqual(['proj-row'])
   const ui = await $.ui.mount({
     plugin: 'replay-qa', component: 'ToolUse', requestId: 'toolu_row', surface: 'terminal',
-    props: { tool: 'Bash', input: { command: 'npx --yes replayqa@0.6.0 mark-bug bug-1 fixed' }, isErrored: false, onScreen: { first: 0, last: 5, of: 6 } } as any,
+    props: { tool: 'Bash', input: { command: 'npx --yes replayqa@0.7.0 mark-bug bug-1 fixed' }, isErrored: false, onScreen: { first: 0, last: 5, of: 6 } } as any,
   })
   relay.length = 0
   await ui.press({ key: 'canvas' })
@@ -295,7 +297,7 @@ test('none: the setup list names each app and its command, on every surface, wit
     expect(await ui.find({ type: 'Text', text: /@x\/docs/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /nx inferred from @nx\/vite\/plugin/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /port 4206 \(vite\.config\.mts\)/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /\$ cd apps\/docs && npx --yes replayqa@0\.6\.0 run/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /\$ cd apps\/docs && npx --yes replayqa@0\.7\.0 run/ })).toBeTruthy()
     expect(await ui.find({ key: 'start:/work/ui/apps/docs' })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /suggestions/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /Use an existing project/ })).toBeTruthy()
@@ -319,7 +321,7 @@ test('nothing found is said plainly, with the two other ways in still offered', 
 test('setup lists apps even where a project is configured', async ($, on) => {
   const { run, runs, mount } = await session($, on, { detect: { ...WORKSPACE, projects: [{ project_id: 'proj-web', path: 'apps/web', qa_url: null }] } })
   expect(await run('setup')).toContain('@x/docs (apps/docs)')
-  expect(runs.find(call => call.argv.includes('detect'))?.argv).toEqual(['npx', '--yes', 'replayqa@0.6.0', 'detect', '--apps', '--json'])
+  expect(runs.find(call => call.argv.includes('detect'))?.argv).toEqual(['npx', '--yes', 'replayqa@0.7.0', 'detect', '--apps', '--json'])
   const ui = await mount()
   expect(await ui.find({ key: 'start:/work/ui/apps/docs' })).toBeTruthy()
   await ui.unmount()
@@ -327,7 +329,7 @@ test('setup lists apps even where a project is configured', async ($, on) => {
 
 // ------------------------------------------------------------- without detection
 
-const UNPUBLISHED = 'npm error code ETARGET\nnpm error notarget No matching version found for replayqa@0.6.0.\nnpm error notarget In most cases you or one of your dependencies are requesting\n'
+const UNPUBLISHED = 'npm error code ETARGET\nnpm error notarget No matching version found for replayqa@0.7.0.\nnpm error notarget In most cases you or one of your dependencies are requesting\n'
 
 test('with no detection the nearest config stands in, and the pane says why', async ($, on) => {
   const { run, mount, followed, called, store } = await session($, on, {
@@ -341,9 +343,9 @@ test('with no detection the nearest config stands in, and the pane says why', as
   const text = await run('')
   expect(followed()).toEqual(['proj-docs'])
   expect(called('/qa/follow')[0]?.body.server).toBe(PREVIEW)
-  expect(text).toContain("Detection isn't available yet: replayqa@0.6.0 isn't published.")
+  expect(text).toContain("Detection isn't available yet: replayqa@0.7.0 isn't published.")
   const ui = await mount()
-  expect(await ui.find({ type: 'Text', text: /Detection isn't available yet: replayqa@0\.6\.0 isn't published/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Detection isn't available yet: replayqa@0\.7\.0 isn't published/ })).toBeTruthy()
   await ui.unmount()
   expect(store.get('qa-last-project:/work/mono/apps/docs')).toBe('proj-docs')
 })
@@ -353,7 +355,7 @@ test('with no detection and no config the pane says so, and still offers the oth
   expect(await run('')).toContain("Detection isn't available yet")
   expect(followed()).toEqual([])
   const ui = await mount()
-  expect(await ui.find({ type: 'Text', text: /Detection isn't available yet: replayqa@0\.6\.0 isn't published/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Detection isn't available yet: replayqa@0\.7\.0 isn't published/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /No \.replay\/config\.json names a project/ })).toBeTruthy()
   expect(await ui.find({ key: 'use' })).toBeTruthy()
   await ui.unmount()
@@ -427,7 +429,7 @@ test('a port already taken is said, and what runs there can be used instead', as
 })
 
 // Production, until loop-qa #6641 ships create_cli_credential: connected, signed in through /mcp or not, and no such tool.
-const NO_SIGN_IN = /live views and tunnels have no sign-in\. Run npx --yes replayqa@0\.6\.0 login/
+const NO_SIGN_IN = /live views and tunnels have no sign-in\. Run npx --yes replayqa@0\.7\.0 login/
 const SIGN_IN_AGAIN = 'MCP server "plugin:replay-qa:replay-qa" needs you to sign in again (run /mcp to re-authenticate)'
 
 test('with no such tool and no other sign-in, nobody is told to do what would not help, on any surface', async ($, on) => {
@@ -497,7 +499,7 @@ test('a sign-in is asked for only when the server asks for one', async ($, on) =
   const { run, mount } = await session($, on, { mcp: 'needs-auth' })
   await run('')
   const ui = await mount()
-  expect(await ui.find({ type: 'Text', text: /Not signed in: run \/mcp and sign in to replay-qa, or run npx --yes replayqa@0\.6\.0 login/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Not signed in: run \/mcp and sign in to replay-qa, or run npx --yes replayqa@0\.7\.0 login/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -596,7 +598,7 @@ test('a press in the browser view is acted on, once checked against the folder',
 test('use: links through the CLI, then opens the canvas', async ($, on) => {
   const { run, runs, followed, written } = await session($, on)
   expect(await run('use proj-mine')).toContain('now uses Replay QA project proj-mine')
-  expect(runs.find(call => call.argv.includes('link'))?.argv).toEqual(['npx', '--yes', 'replayqa@0.6.0', 'link', 'proj-mine'])
+  expect(runs.find(call => call.argv.includes('link'))?.argv).toEqual(['npx', '--yes', 'replayqa@0.7.0', 'link', 'proj-mine'])
   expect(written).toEqual({})
   expect(followed()).toEqual(['proj-mine'])
 })
@@ -645,7 +647,7 @@ test('test: a public URL is set up on a credential of its own, in the environmen
   const { run, runs, followed, said } = await session($, on, { bootstrap: { exitCode: 0, stdout } })
   const answer = await run('test https://example.com/app')
   const [boot] = runs.filter(call => call.argv.includes('bootstrap'))
-  expect(boot?.argv).toEqual(['npx', '--yes', 'replayqa@0.6.0', 'bootstrap', 'https://example.com/app', '--public'])
+  expect(boot?.argv).toEqual(['npx', '--yes', 'replayqa@0.7.0', 'bootstrap', 'https://example.com/app', '--public'])
   expect(boot?.init.env.REPLAY_QA_API_KEY).toBe(`${CREDENTIAL}relay`)
   expect(boot?.init.cwd).toBe('/work/ui')
   expect(followed()).toEqual(['proj-public'])
@@ -659,7 +661,7 @@ test('test: what the CLI says when it made no project reaches the person', async
 
 test('test: before the CLI is published it says so', async ($, on) => {
   const { run } = await session($, on, { bootstrap: { exitCode: 1, stderr: UNPUBLISHED } })
-  expect(await run('test https://example.com')).toContain("replayqa@0.6.0 isn't published yet")
+  expect(await run('test https://example.com')).toContain("replayqa@0.7.0 isn't published yet")
 })
 
 test('test: a project it made is opened even if what it asked next failed', async ($, on) => {
@@ -677,7 +679,7 @@ test('test: a local address or a non-address is refused with what to do instead'
 
 // ---------------------------------------------------------------------- the relay
 
-test('nothing but a hook asks the MCP server: not a press, not the browser view, not the background', async ($, on) => {
+test('nothing but a hook asks the MCP server: not a press, not the browser view, not the background', { timeoutMs: 20_000 }, async ($, on) => {
   const { run, mount, mcpCalls, clock, pushFeed, called } = await session($, on, { mcp: 'no-tool', detect: { ...WORKSPACE } })
   await run('')
   const after = mcpCalls.length

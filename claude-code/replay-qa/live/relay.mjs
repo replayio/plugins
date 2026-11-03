@@ -26,7 +26,7 @@ import net from 'node:net'
 import { execFile, execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { decodeCredential, exchangeCredential, mintWithToken, refreshSession } from './mcp-auth.mjs'
+import { decodeCredential, exchangeCredential, mintWithToken, newPkcePair, refreshSession } from './mcp-auth.mjs'
 import { AuthError, NotFoundError, apiBaseOf, tunnelServers } from './qa-stream.mjs'
 
 /** live/: this script, the pages and vendor/. */
@@ -118,7 +118,7 @@ function serverNote(apiBase) {
  * What always works, whatever the MCP server can do: a sign-in through it reaches the relay only where it
  * offers `create_cli_credential`, so saying /mcp here would leave someone already signed in there stuck.
  */
-const HOW_TO_SIGN_IN = 'run `npx --yes replayqa@0.6.0 login`, or set REPLAY_QA_API_KEY'
+const HOW_TO_SIGN_IN = 'run `npx --yes replayqa@0.7.0 login`, or set REPLAY_QA_API_KEY'
 
 /** The existing sign-ins: REPLAY_QA_API_KEY and its older names, then `replayqa login` (or `replayio login`, the same cache). */
 function existingToken() {
@@ -144,9 +144,15 @@ function existingToken() {
 const mcpSessions = new Map()
 const REFRESH_MARGIN_MS = 2 * 60_000
 
+/** The verifier for the credential the hooks module is asking for. One at a time: it signs the relay in once. */
+let pendingPkce = null
+
 /** Exchanges a credential the hooks module minted; it is single-use, so the session it gives is kept. */
 async function adoptCredential(credential) {
-  const session = await exchangeCredential(credential)
+  const verifier = pendingPkce?.challenge === decodeCredential(credential).challenge ? pendingPkce.verifier : undefined
+  pendingPkce = null
+  if (!verifier) throw new Error('The relay did not ask for that Replay QA CLI credential.')
+  const session = await exchangeCredential(credential, verifier)
   mcpSessions.set(session.origin, { ...session, refreshing: null })
   return session
 }
@@ -711,7 +717,7 @@ async function watch({ projectId, kind, sourceId, title, goal }) {
 }
 
 /** The pinned CLI that reads recordings. A release cannot change this plugin's stream by itself. */
-const REPLAYQA = process.env.REPLAY_QA_CLI?.split(' ').filter(Boolean) ?? ['npx', '--yes', 'replayqa@0.6.0']
+const REPLAYQA = process.env.REPLAY_QA_CLI?.split(' ').filter(Boolean) ?? ['npx', '--yes', 'replayqa@0.7.0']
 /** Readers running now, so none outlives the relay. */
 const readers = new Set()
 /** A reader refused sooner than this was not refused because its token ran out. */
@@ -1368,10 +1374,16 @@ const server = http.createServer(async (req, res) => {
     if (token !== TOKEN) return send(res, 403, { error: 'bad token' })
 
     // What only the hooks module may do.
-    const isHookRoute = (parts[0] === 'auth' && (parts[1] === 'credential' || parts[1] === 'mint'))
+    const isHookRoute = (parts[0] === 'auth' && (parts[1] === 'challenge' || parts[1] === 'credential' || parts[1] === 'mint'))
       || (parts[0] === 'tunnels' && req.method === 'POST')
       || (parts[0] === 'qa' && parts[1] === 'folder' && !parts[2] && req.method === 'POST')
     if (isHookRoute && req.headers['x-replay-qa-hook-token'] !== HOOK_TOKEN) return send(res, 403, { error: 'bad token' })
+
+    // POST /auth/challenge -> the hash to ask the MCP server for a credential with; what it hashes stays here
+    if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'challenge') {
+      pendingPkce = newPkcePair()
+      return send(res, 200, { code_challenge: pendingPkce.challenge })
+    }
 
     // POST /auth/credential { credential } -> exchanges it and keeps the tokens in memory; answers no secret
     if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'credential') {

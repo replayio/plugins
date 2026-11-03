@@ -1,19 +1,19 @@
 ---
 name: "replay-qa"
 description: "Managed E2E testing service for finding bugs and adversarial verification"
-allowed-tools: Bash(npx --yes replayqa@0.6.0 *)
+allowed-tools: Bash(npx --yes replayqa@0.7.0 *)
 ---
 
 # Replay QA
 
-Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.6.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
+Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.7.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
 
 ## Current Replay QA Context
 
 This block is injected when the skill loads. If shell execution is disabled or auth is missing, use the message to decide which setup step to run next.
 
 ```!
-npx --yes replayqa@0.6.0 context
+npx --yes replayqa@0.7.0 context
 ```
 
 ## Authentication
@@ -21,20 +21,20 @@ npx --yes replayqa@0.6.0 context
 The CLI shares Replay's login cache. Authenticate once:
 
 ```bash
-npx --yes replayqa@0.6.0 login
+npx --yes replayqa@0.7.0 login
 ```
 
-Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.6.0 auth`.
+Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token; see https://docs.replay.io/reference/api-keys. app.replay.io API keys are not accepted. Check the active source with `npx --yes replayqa@0.7.0 auth`.
 
-This plugin also declares the Replay QA MCP server (`replay-qa`), whose tools work once the user signs in to it with `/mcp`. Where that server offers `create_cli_credential`, the live views and the tunnels `/replayqa` starts run on that sign-in too, with no `replayqa login`. Production does not offer it yet: until it does they need `replayqa login`, even for someone signed in through `/mcp`. The `replayqa` commands you run through Bash always use the sources above: the plugin can't hand them a credential without it showing in permission prompts and hooks. If they report no sign-in, ask the user to run `replayqa login`, or use the MCP server's tools.
+This plugin also declares the Replay QA MCP server (`replay-qa`), whose tools work once the user signs in to it with `/mcp`. Where that server offers `create_cli_credential`, the live views and the tunnels `/replayqa` starts run on that sign-in too, with no `replayqa login`. Production does not offer it yet: until it does they need `replayqa login`, even for someone signed in through `/mcp`. The `replayqa` commands you run through Bash use the sources above, or a sign-in they saved from that server. If they report no sign-in and the server has the tool, sign the CLI in once: run `npx --yes replayqa@0.7.0 login --mcp-challenge`, call `create_cli_credential` with the `code_challenge` it prints, then within a minute run `REPLAY_QA_URL="<qa_url>" npx --yes replayqa@0.7.0 login --mcp-credential "<credential>"`. The credential is useless without the secret the CLI kept. Otherwise ask the user to run `replayqa login`, or use the MCP server's tools.
 
 ## Project Reuse
 
 Project ids are resolved in this order: `--project <id or URL>`, then `REPLAY_QA_PROJECT_ID`, then `qa-project-id` in the nearest `.replay/config.json` from the current folder up to the git root. Reuse the stored project for all Replay QA work in that folder. Do not create a duplicate unless the user explicitly asks for a new project or the stored one is proven invalid for the current account.
 
-Run `npx --yes replayqa@0.6.0 detect --json` first to see what a folder holds. If it reports `projects`, use those and don't look for apps; with several (a monorepo), ask which one, and run from its folder or pass it with `--project`. With none, its `apps` are suggestions to confirm with the user: ports are guesses, and apps collide on them. Each has a `setup.command` that starts the app and its tunnel. It reads files only and runs nothing from the folder.
+Run `npx --yes replayqa@0.7.0 detect --json` first to see what a folder holds. If it reports `projects`, use those and don't look for apps; with several (a monorepo), ask which one, and run from its folder or pass it with `--project`. With none, its `apps` are suggestions to confirm with the user: ports are guesses, and apps collide on them. Each has a `setup.command` that starts the app and its tunnel. It reads files only and runs nothing from the folder.
 
-If the user gives a dashboard URL, pass it with `--project`; `npx --yes replayqa@0.6.0 link <id or URL>` links the folder to a project that already exists. If there is no project, `bootstrap` and `full-qa` create one and write its id to `.replay/config.json`, preserving other keys. Without a config, a package in a monorepo keeps its own, so each app can be its own project.
+If the user gives a dashboard URL, pass it with `--project`; `npx --yes replayqa@0.7.0 link <id or URL>` links the folder to a project that already exists. If there is no project, `bootstrap` and `full-qa` create one and write its id to `.replay/config.json`, preserving other keys. Without a config, a package in a monorepo keeps its own, so each app can be its own project.
 
 When reporting setup, say whether the id was reused from `.replay/config.json`, passed explicitly, read from the environment, or created and written back.
 
@@ -45,7 +45,7 @@ Replay QA needs network access to the app under test. Do not create, scaffold, o
 From the app's repository, start its normal dev server behind the CLI's wrapper. The target URL is the stable browser-visible origin and the upstream URL is the dev server; their ports must differ:
 
 ```bash
-npx --yes replayqa@0.6.0 run http://localhost:3000 \
+npx --yes replayqa@0.7.0 run http://localhost:3000 \
   --upstream-url http://127.0.0.1:5173 \
   --app-command "npm run dev -- --host 0.0.0.0 --port 5173" \
   --project proj_123
@@ -54,14 +54,14 @@ npx --yes replayqa@0.6.0 run http://localhost:3000 \
 `run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
 
 ```bash
-npx --yes replayqa@0.6.0 proxy --project proj_123 --target-url http://localhost:3000
+npx --yes replayqa@0.7.0 proxy --project proj_123 --target-url http://localhost:3000
 ```
 
 Use `--allow` when the browser must reach additional local or private hosts. Pass `--public` to project creation when the user provides a public URL.
 
 ## Commands
 
-Every command prints JSON for agent use. `npx --yes replayqa@0.6.0 <command> --help` gives its options, and `npx --yes replayqa@0.6.0 skill` prints the CLI's full guide.
+Every command prints JSON for agent use. `npx --yes replayqa@0.7.0 <command> --help` gives its options, and `npx --yes replayqa@0.7.0 skill` prints the CLI's full guide.
 
 | Command | Purpose |
 | --- | --- |
@@ -89,14 +89,14 @@ Bug-type exclusions in the instructions (for example "Exclude accessibility.") s
 Common examples:
 
 ```bash
-npx --yes replayqa@0.6.0 status --watch
-npx --yes replayqa@0.6.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
-npx --yes replayqa@0.6.0 bugs --status open --details --save
-npx --yes replayqa@0.6.0 bug bug_id_here --save
-npx --yes replayqa@0.6.0 mark-bug bug_id_here fixed
-npx --yes replayqa@0.6.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
-npx --yes replayqa@0.6.0 rerun-journeys --bug-id bug_id_here
-npx --yes replayqa@0.6.0 report-missing-bug "Settings changes do not persist after refresh."
+npx --yes replayqa@0.7.0 status --watch
+npx --yes replayqa@0.7.0 bugs --project "https://qa.replay.io/projects/proj-example/bugs"
+npx --yes replayqa@0.7.0 bugs --status open --details --save
+npx --yes replayqa@0.7.0 bug bug_id_here --save
+npx --yes replayqa@0.7.0 mark-bug bug_id_here fixed
+npx --yes replayqa@0.7.0 start-exploration "Focus on onboarding, invalid inputs, refreshes, and back navigation."
+npx --yes replayqa@0.7.0 rerun-journeys --bug-id bug_id_here
+npx --yes replayqa@0.7.0 report-missing-bug "Settings changes do not persist after refresh."
 ```
 
 ## Slash Commands

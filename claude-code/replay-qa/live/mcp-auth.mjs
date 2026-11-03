@@ -1,9 +1,18 @@
 // The Replay QA MCP sign-in, as the relay holds it. A credential is what the MCP server's
-// `create_cli_credential` tool mints: `mcl_` + base64url of `{ u: qa origin, i: client_id, c: code,
-// v: code_verifier, r: redirect_uri }`, opaque, single-use and short-lived. It is exchanged at the QA
-// server's OAuth endpoint for an hour-long `mcp_` token and a rotating refresh token.
+// `create_cli_credential` tool mints for a code challenge: `mcl_` + base64url of `{ u: qa origin,
+// i: client_id, c: code, r: redirect_uri, h: code_challenge }`, opaque, single-use and good for a minute.
+// With the verifier the relay kept, it is exchanged at the QA server's OAuth endpoint for an hour-long
+// `mcp_` token and a rotating refresh token. A credential for a child process carries the verifier as `v`.
 //
 // Errors here never hold a credential or a token: they reach the pane and the debug log.
+
+import { createHash, randomBytes } from 'node:crypto'
+
+/** A PKCE pair: the verifier stays in this process, and only the challenge goes to the server. */
+export function newPkcePair() {
+  const verifier = randomBytes(32).toString('base64url')
+  return { verifier, challenge: createHash('sha256').update(verifier).digest('base64url') }
+}
 
 /** Reads a credential; throws, without echoing it, when it is not one or names a server not to be trusted with it. */
 export function decodeCredential(credential) {
@@ -14,7 +23,7 @@ export function decodeCredential(credential) {
   } catch {
     throw new Error('The Replay QA CLI credential could not be read.')
   }
-  if (!fields || [fields.u, fields.i, fields.c, fields.v, fields.r].some(field => typeof field !== 'string' || !field)) {
+  if (!fields || [fields.u, fields.i, fields.c, fields.r].some(field => typeof field !== 'string' || !field)) {
     throw new Error('The Replay QA CLI credential is missing a field.')
   }
   let url
@@ -27,7 +36,7 @@ export function decodeCredential(credential) {
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback)) {
     throw new Error(`The Replay QA CLI credential names an insecure QA server: ${url.host}.`)
   }
-  return { origin: url.origin, clientId: fields.i, code: fields.c, verifier: fields.v, redirectUri: fields.r }
+  return { origin: url.origin, clientId: fields.i, code: fields.c, verifier: fields.v, challenge: fields.h, redirectUri: fields.r }
 }
 
 async function postToken(origin, params) {
@@ -50,9 +59,11 @@ async function postToken(origin, params) {
   }
 }
 
-/** Exchanges a credential, once: `{ origin, clientId, accessToken, refreshToken, expiresAt }`. */
-export async function exchangeCredential(credential) {
-  const { origin, clientId, code, verifier, redirectUri } = decodeCredential(credential)
+/** Exchanges a credential, once, with the verifier it was minted for: `{ origin, clientId, accessToken, refreshToken, expiresAt }`. */
+export async function exchangeCredential(credential, keptVerifier) {
+  const { origin, clientId, code, verifier: carried, redirectUri } = decodeCredential(credential)
+  const verifier = keptVerifier ?? carried
+  if (!verifier) throw new Error('The relay did not ask for that Replay QA CLI credential.')
   const tokens = await postToken(origin, {
     grant_type: 'authorization_code',
     code,
@@ -80,10 +91,11 @@ export async function refreshSession(session) {
  * button, a timer or a browser press would stop to ask the person. Null when the server gives none.
  */
 export async function mintWithToken(origin, accessToken) {
+  const { verifier, challenge } = newPkcePair()
   const response = await fetch(`${origin}/api/mcp`, {
     method: 'POST',
     headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_cli_credential', arguments: {} } }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'create_cli_credential', arguments: { code_challenge: challenge } } }),
     signal: AbortSignal.timeout(20_000),
   })
   if (response.status === 401) {
@@ -96,8 +108,10 @@ export async function mintWithToken(origin, accessToken) {
   if (!text) return null
   try {
     const { credential } = JSON.parse(text)
-    decodeCredential(credential)
-    return credential
+    const fields = JSON.parse(Buffer.from(credential.slice('mcl_'.length), 'base64url').toString('utf8'))
+    const whole = `mcl_${Buffer.from(JSON.stringify({ ...fields, v: verifier })).toString('base64url')}`
+    decodeCredential(whole)
+    return whole
   } catch {
     return null
   }

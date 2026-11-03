@@ -71,7 +71,7 @@ const FOLDERS = {
     },
   },
   none: { view: 'setup', folder: { root: '/demo/empty', name: 'empty', mode: 'none', projects: [], workspace: noWorkspace, apps: [], packages: 0, libraries: 0 } },
-  nodetect: { view: 'setup', folder: null, why: "Detection isn't available yet: replayqa@0.6.0 isn't published." },
+  nodetect: { view: 'setup', folder: null, why: "Detection isn't available yet: replayqa@0.7.0 isn't published." },
 }
 
 const mock = await startMock({ projects })
@@ -80,7 +80,7 @@ const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-repla
 const child = spawn('node', [RELAY], {
   env: {
     ...process.env, REPLAY_QA_API_BASE: mock.url, REPLAY_QA_API_KEY: 'demo', REPLAY_QA_LIVE_DIR: dataDir, REPLAY_QA_LIVE_PORT: process.env.DEMO_PORT ?? '0',
-    REPLAY_QA_CLI: `node ${FAKE}`, FAKE_REPLAYQA_REAL: process.env.REPLAY_QA_CLI ?? 'npx --yes replayqa@0.6.0', FAKE_REPLAYQA_PROJECT: 'proj-demo-shop', FAKE_REPLAYQA_STEP_MS: '1500',
+    REPLAY_QA_CLI: `node ${FAKE}`, FAKE_REPLAYQA_REAL: process.env.REPLAY_QA_CLI ?? 'npx --yes replayqa@0.7.0', FAKE_REPLAYQA_PROJECT: 'proj-demo-shop', FAKE_REPLAYQA_STEP_MS: '1500',
   },
   stdio: ['ignore', 'pipe', 'inherit'],
 })

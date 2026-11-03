@@ -10,7 +10,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { decodeCredential, exchangeCredential, mintWithToken, refreshSession } from '../mcp-auth.mjs'
+import { decodeCredential, exchangeCredential, mintWithToken, newPkcePair, refreshSession } from '../mcp-auth.mjs'
 import { startMock } from './mock-qa-api.mjs'
 import { synthEvents } from './synth.mjs'
 
@@ -189,13 +189,22 @@ async function withRelay(t, scenario, extraEnv) {
 
 const SHOP = { projects: [{ id: 'proj-shop', name: 'Shop', journeys: [], runs: [] }] }
 
+/** What the hooks module does: asks the relay for a challenge, and hands back what the server minted for it. */
+async function signIn(relay, mock) {
+  const { data } = await relay.hook('POST', '/auth/challenge', {})
+  return relay.hook('POST', '/auth/credential', { credential: mock.credential(data.code_challenge) })
+}
+
 test('the MCP sign-in is preferred over the existing token, refreshed in memory, and never logged', async t => {
   const { mock, relay } = await withRelay(t, SHOP)
   await relay.call('POST', '/qa/follow', { projectId: 'proj-shop' })
   assert.ok(mock.tokens.every(token => token === 'test'), 'with no sign-in, the existing token')
 
-  // Only the hooks module may hand a credential over, and the answer holds no secret.
-  const credential = mock.credential()
+  // Only the hooks module may ask for a challenge or hand a credential over, and the answers hold no secret.
+  assert.equal((await relay.call('POST', '/auth/challenge', {})).status, 403)
+  const { data: { code_challenge: challenge } } = await relay.hook('POST', '/auth/challenge', {})
+  assert.match(challenge, /^[A-Za-z0-9_-]{43}$/)
+  const credential = mock.credential(challenge)
   assert.equal((await relay.call('POST', '/auth/credential', { credential })).status, 403)
   const adopted = await relay.hook('POST', '/auth/credential', { credential })
   assert.equal(adopted.status, 200)
@@ -215,6 +224,14 @@ test('the MCP sign-in is preferred over the existing token, refreshed in memory,
   assert.equal(again.status, 400)
   assert.equal(again.data.error.includes(credential), false)
 
+  // Nor can one minted for a challenge the relay did not make be redeemed, and nothing goes to the server.
+  const redeemed = mock.oauth.requests.length
+  await relay.hook('POST', '/auth/challenge', {})
+  const stranger = await relay.hook('POST', '/auth/credential', { credential: mock.credential(newPkcePair().challenge) })
+  assert.equal(stranger.status, 400)
+  assert.match(stranger.data.error, /did not ask/)
+  assert.equal(mock.oauth.requests.length, redeemed)
+
   // The server stops taking the token: one refresh, with the client id it asks for, and on it goes.
   mock.expireTokens()
   mock.tokens.length = 0
@@ -228,7 +245,7 @@ test('the MCP sign-in is preferred over the existing token, refreshed in memory,
 test('a token nearing its end is refreshed before it is used, and a refused refresh falls back to the existing token', async t => {
   const { mock, relay } = await withRelay(t, SHOP)
   mock.oauth.expiresIn = 60 // inside the refresh margin at once
-  await relay.hook('POST', '/auth/credential', { credential: mock.credential() })
+  await signIn(relay, mock)
   mock.tokens.length = 0
   await relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')
   assert.ok(mock.oauth.generation >= 2, 'it refreshed')
@@ -246,7 +263,7 @@ test('an MCP token only ever goes to the server that issued it', async t => {
   const other = await startMock({ projects: [{ id: 'proj-elsewhere', name: 'Elsewhere', journeys: [], runs: [] }] })
   t.after(() => other.close())
   const { mock, relay } = await withRelay(t, SHOP)
-  await relay.hook('POST', '/auth/credential', { credential: mock.credential() })
+  await signIn(relay, mock)
   await relay.call('POST', '/qa/follow', { projectId: 'proj-elsewhere', server: other.url })
   assert.ok(other.tokens.length > 0)
   assert.ok(other.tokens.every(token => token === 'test'), other.tokens.join())
@@ -259,7 +276,7 @@ test('a reader whose token runs out starts again on a fresh one, with no row app
   const { mock, relay } = await withRelay(t, {
     projects: [{ id: 'proj-live', name: 'Live', journeys: [{ id: 'j1', name: 'Search' }], runs: [{ id: 'run-live', journey_id: 'j1', status: 'in-progress', title: 'Search', events: synthEvents({ title: 'Search', steps: 4 }), live: { perSecond: 1 } }] }],
   }, { REPLAY_QA_CLI: FAKE_CLI, FAKE_REPLAYQA_READER_LOG: log, REPLAY_QA_READER_MIN_LIFE_MS: '100' })
-  await relay.hook('POST', '/auth/credential', { credential: mock.credential() })
+  await signIn(relay, mock)
   await relay.call('POST', '/qa/follow', { projectId: 'proj-live' })
   const recording = await until(async () => {
     const [rec] = (await relay.call('GET', '/recordings')).data
@@ -280,7 +297,7 @@ test('a reader refused at once is an error, not a loop', async t => {
   const { mock, relay } = await withRelay(t, {
     projects: [{ id: 'proj-live', name: 'Live', journeys: [{ id: 'j1', name: 'Search' }], runs: [{ id: 'run-live', journey_id: 'j1', status: 'in-progress', title: 'Search', events: synthEvents({ title: 'Search', steps: 4 }), live: { perSecond: 1 } }] }],
   }, { REPLAY_QA_CLI: FAKE_CLI, FAKE_REPLAYQA_READER_LOG: log })
-  await relay.hook('POST', '/auth/credential', { credential: mock.credential() })
+  await signIn(relay, mock)
   await relay.call('POST', '/qa/follow', { projectId: 'proj-live' })
   const failed = await until(async () => {
     const [rec] = (await relay.call('GET', '/recordings')).data
@@ -297,7 +314,7 @@ test('with no sign-in at all the canvas says what works: no /mcp, which would no
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const { relay } = await withRelay(t, SHOP, { HOME: home, REPLAY_QA_API_KEY: '' })
   const { error } = (await relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')).data
-  assert.equal(error, 'No Replay QA sign-in: run `npx --yes replayqa@0.6.0 login`, or set REPLAY_QA_API_KEY')
+  assert.equal(error, 'No Replay QA sign-in: run `npx --yes replayqa@0.7.0 login`, or set REPLAY_QA_API_KEY')
   assert.deepEqual((await relay.call('GET', '/auth/status')).data, { mcp: [], existing: false })
 })
 
@@ -305,7 +322,7 @@ test('a sign-in the server refuses says the same, naming the server', async t =>
   const { mock, relay } = await withRelay(t, SHOP)
   mock.fail('proj-shop', 401)
   const { error } = (await relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')).data
-  assert.match(error, /Replay QA on 127\.0\.0\.1:\d+ answered 401 for project proj-shop: run `npx --yes replayqa@0\.6\.0 login`/)
+  assert.match(error, /Replay QA on 127\.0\.0\.1:\d+ answered 401 for project proj-shop: run `npx --yes replayqa@0\.7\.0 login`/)
   assert.equal(error.includes('/mcp'), false)
 })
 
@@ -404,7 +421,7 @@ async function runTunnel(t, { env = {}, signedIn = false, noTool = false } = {})
     args: ['run', 'http://localhost:4100', '--app-command', 'pnpm dev', '--create-project', '--name', '@x/web'],
   }
   ctx.mock.oauth.noCredentialTool = noTool
-  if (signedIn) await ctx.relay.hook('POST', '/auth/credential', { credential: ctx.mock.credential() })
+  if (signedIn) await signIn(ctx.relay, ctx.mock)
   const started = await ctx.relay.hook('POST', '/tunnels', spec)
   assert.equal(started.status, 200)
   const runs = () => fs.readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line))
@@ -482,7 +499,7 @@ test('a credential for a process the hooks module runs: its own each time, only 
   const { mock, relay } = await withRelay(t, SHOP)
   assert.deepEqual((await relay.hook('POST', '/auth/mint', {})).data, { credential: null, qaUrl: null })
   assert.equal((await relay.call('POST', '/auth/mint', {})).status, 403)
-  await relay.hook('POST', '/auth/credential', { credential: mock.credential() })
+  await signIn(relay, mock)
   const first = (await relay.hook('POST', '/auth/mint', {})).data
   const second = (await relay.hook('POST', '/auth/mint', {})).data
   assert.match(first.credential, /^mcl_/)
@@ -536,11 +553,12 @@ const credentialFor = origin => `mcl_${Buffer.from(JSON.stringify({ u: origin, i
 test('a credential is exchanged and refreshed with the form the QA server takes', async t => {
   const mock = await startMock(SHOP)
   t.after(() => mock.close())
-  const session = await exchangeCredential(mock.credential('code-a'))
+  const { verifier, challenge } = newPkcePair()
+  const session = await exchangeCredential(mock.credential(challenge, 'code-a'), verifier)
   assert.equal(session.origin, mock.origin)
   assert.equal(session.accessToken, 'mcp_access_1')
   const [first] = mock.oauth.requests
-  assert.deepEqual(first, { grant_type: 'authorization_code', code: 'code-a', redirect_uri: 'http://127.0.0.1/callback', client_id: 'client-1', code_verifier: 'verifier-1' })
+  assert.deepEqual(first, { grant_type: 'authorization_code', code: 'code-a', redirect_uri: 'http://127.0.0.1/callback', client_id: 'client-1', code_verifier: verifier })
   const fresh = await refreshSession(session)
   assert.equal(fresh.accessToken, 'mcp_access_2')
   assert.equal(fresh.refreshToken, 'mcr_refresh_2')
@@ -550,8 +568,12 @@ test('a credential is exchanged and refreshed with the form the QA server takes'
 test('minting on a token: what the server gives, or nothing, or a refusal to act on', async t => {
   const mock = await startMock(SHOP)
   t.after(() => mock.close())
-  const { accessToken } = await exchangeCredential(mock.credential())
-  assert.match(await mintWithToken(mock.origin, accessToken), /^mcl_/)
+  const pair = newPkcePair()
+  const { accessToken } = await exchangeCredential(mock.credential(pair.challenge), pair.verifier)
+  // It carries the verifier the server never saw, so a child process can redeem it.
+  const minted = await mintWithToken(mock.origin, accessToken)
+  assert.match(minted, /^mcl_/)
+  assert.equal((await exchangeCredential(minted)).origin, mock.origin)
   mock.oauth.noCredentialTool = true
   assert.equal(await mintWithToken(mock.origin, accessToken), null)
   await assert.rejects(mintWithToken(mock.origin, 'mcp_not_a_token'), err => err.status === 401 && !err.message.includes('mcp_not_a_token'))
