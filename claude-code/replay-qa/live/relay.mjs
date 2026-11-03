@@ -445,7 +445,7 @@ class Chrome {
     if (this.ready) return this.ready
     this.ready = new Promise((resolve, reject) => {
       const bin = findChrome()
-      if (!bin) return reject(new Error('No browser found for the inline player: install Replay Chromium (npx @replayio/replay install) or set REPLAY_LIVE_CHROME'))
+      if (!bin) return reject(new Error('No browser found for the inline player: install Replay Chromium (npx @replayio/replay@0.22.12 install) or set REPLAY_LIVE_CHROME'))
       const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'replayio-live-chrome-'))
       const env = { ...process.env }
       delete env.RECORD_ALL_CONTENT

@@ -1,6 +1,6 @@
 {
   "name": "replay-qa",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Run Replay QA against production, staging, and PR preview URLs with replayqa CLI project, status, bug, journey, and exploration workflows.",
   "author": {
     "name": "Replay",
@@ -105,7 +105,7 @@
         "commerce_description": "The plugin does not accept payments or place orders. QA executions use the connected Replay QA account's existing plan or credits."
       },
       "publication": {
-        "release_notes": "Version 0.2.0 adds the Replay QA MCP connection, a paginated project index, conversation-scoped project selection, and the interactive dashboard with bug and test-run recordings. Bundled scripts remain available for local QA workflows."
+        "release_notes": "Open the real Replay QA pages in the conversation: your projects, and each project's bugs, test runs, journeys and recordings, with the conversation following the page you're on. In a repo, Replay QA finds the projects linked from its folders and helps set up the apps that have none."
       }
     }
   }
