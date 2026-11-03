@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "replay-qa": {
+      "type": "http",
+      "url": "https://qa.replay.io/api/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": {
+              "mode": "cimd"
+            },
+            "authorizationUrl": "https://qa.replay.io/api/oauth-authorize",
+            "tokenUrl": "https://qa.replay.io/api/oauth-token",
+            "registrationUrl": "https://qa.replay.io/api/oauth-register",
+            "resource": "https://qa.replay.io/api/mcp",
+            "baseScopes": [
+              "full"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
