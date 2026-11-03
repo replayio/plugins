@@ -41,7 +41,7 @@ async function startRelay(apiBase, dataDir, extraEnv = {}) {
   }
   /** What only the hooks module may do. */
   const hook = (method, p, body) => call(method, p, body, { 'x-replay-qa-hook-token': info.hookToken })
-  return { info, call, hook, output: () => output.join(''), stop: () => child.kill() }
+  return { info, call, hook, output: () => output.join(''), stop: signal => child.kill(signal) }
 }
 
 const until = async (check, ms = 10_000) => {
@@ -543,6 +543,14 @@ test('the session ending takes its tunnels with it', async t => {
   const [{ pid }] = runs()
   assert.equal(isAlive(pid), true)
   relay.stop()
+  await until(() => !isAlive(pid), 5_000)
+})
+
+test('a closed terminal takes its tunnels with it', async t => {
+  const { relay, tunnel, runs } = await runTunnel(t, { env: { FAKE_REPLAYQA_PROJECT: 'proj-x' } })
+  await until(async () => (await tunnel()).status === 'ready')
+  const [{ pid }] = runs()
+  relay.stop('SIGHUP')
   await until(() => !isAlive(pid), 5_000)
 })
 

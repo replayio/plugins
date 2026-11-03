@@ -7,6 +7,8 @@ description: "Use when running Replay QA against production, staging, PR preview
 
 Use Replay QA through the `replayqa` CLI, always as `npx --yes replayqa@0.7.0`: this plugin is written against that version. It preserves project state in the repo and avoids requiring the model to remember raw endpoint details.
 
+If `npx` is not found, Node is usually installed through a version manager the shell has not loaded. Look in `~/.nvm/versions/node/*/bin`, `~/.volta/bin`, `~/.local/share/fnm`, `~/.asdf/shims`, `/opt/homebrew/bin` and `/usr/local/bin`, and put that directory on `PATH` for the command. Do not download Node: if none is there, tell the user.
+
 This Codex package is for QA runs against production, staging, PR previews, and other reachable app URLs. Direct Replay.io recording and MCP debugging belong to the `replayio` / `codex-pro` package.
 
 ## Authentication
@@ -87,7 +89,7 @@ npx --yes replayqa@0.7.0 run http://localhost:3000 \
   --project proj_123
 ```
 
-`run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
+`run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. With `--json` it prints one event per line, and the tunnel is ready at a `heartbeat` event with `"ready": true`. When it ends, the app and tunnel stop with it. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
 
 ```bash
 npx --yes replayqa@0.7.0 proxy --project proj_123 --target-url http://localhost:3000

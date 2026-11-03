@@ -1618,6 +1618,7 @@ const shutdown = () => {
 }
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+process.on('SIGHUP', shutdown)
 // The mod's spawn kills us when it lets go; if Claude Code itself dies we are
 // reparented, so exit rather than linger with a headless Chrome.
 const parent = process.ppid
