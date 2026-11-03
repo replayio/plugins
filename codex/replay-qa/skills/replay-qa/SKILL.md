@@ -19,7 +19,7 @@ REPLAY_QA_API_KEY="<credential>" REPLAY_QA_URL="<qa_url>" npx --yes replayqa@0.6
 
 The credential is single-use and expires in minutes, so get a new one for each process, and do not repeat it to the user. The CLI refreshes the session itself, so a tunnel outlives it.
 
-Otherwise, authenticate through the CLI. The CLI shares Replay's login cache. Authenticate once:
+Being connected does not mean signed in, and not every server has `create_cli_credential` yet. If the server is not connected, a tool call says it is not signed in, or `create_cli_credential` is missing or fails, use the CLI with its own login instead. The CLI shares Replay's login cache. Authenticate once:
 
 ```bash
 npx --yes replayqa@0.6.0 login
@@ -137,6 +137,8 @@ The plugin connects the Replay QA MCP server, which signs in with Replay on firs
 - For "show my projects", call it with no arguments.
 - When the user names a project, pass `project_id` (an id or a dashboard URL). `page` opens `overview`, `bugs` or `test-runs`.
 - Pass `bug_id`, `test_session_id`, `journey_id` or `test_run_id` to open that page directly.
+
+If the server has no `open_qa_dashboard` tool yet, say the view is not available and print the lists.
 
 Where the host draws MCP Apps, the view is the site's own pages, and the latest app context names the exact page the user is on: its project, and any bug, test run or journey. Use it for "this bug", "this run" and "this project". It follows the page, so going back drops the bug. A page being open never authorizes starting QA. Its setup actions send you a message with the exact command to run. Elsewhere the tool answers with a one-line summary, and the commands above remain the way to read details.
 
