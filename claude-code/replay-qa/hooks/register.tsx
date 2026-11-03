@@ -1,15 +1,17 @@
 /* @jsx h */
 import type { EngineInterface, Register } from 'claude-code'
 
-import { isRunningStatus, parseQaCommand, parseQaOutput, type QaCommand } from './detect.ts'
+import { isRunningStatus, jsonValues, parseQaCommand, parseQaOutput, type QaCommand } from './detect.ts'
+import { drawFolder, type DetectedApp, type DetectedProject, type Detection, type FolderActions, type FolderData, type FolderUi, type Summary, type Tunnel } from './folder.tsx'
 
 // Live Replay QA in the transcript. When Claude starts an exploration, or a bug marked fixed makes
 // the backend re-test a journey, the relay (live/relay.mjs) reads that run's rrweb stream from the
 // QA API as it happens, and a headless renderer plays it into PNG frames this module draws as an
-// Image on the call's own row, scrubbable once it ends. `/replayqa canvas` opens a pane holding
-// every journey of the project as rrweb players, the running ones streaming in parallel.
+// Image on the call's own row, scrubbable once it ends. `/replayqa` follows the session's folder: it
+// opens a pane holding every journey of the folder's project as rrweb players, the running ones
+// streaming in parallel, or the index of the folder's projects, or the list to set one up.
 
-type Relay = { port: number; token: string; dataDir: string }
+type Relay = { port: number; token: string; dataDir: string; hookToken?: string }
 
 type RecordingInfo = {
   id: string
@@ -80,7 +82,20 @@ const PANE = 'replay-qa-canvas'
 const IMAGE_KEY = 'player'
 const CANVAS_KEY = 'canvas'
 const STORE_PREFIX = 'qa-player:'
-const LAST_PROJECT_KEY = 'qa-last-project'
+/** One unscoped key once held the last project, whatever folder it was seen in: it is removed, not read. */
+const OLD_LAST_PROJECT_KEY = 'qa-last-project'
+/** The last project seen in a folder (its nearest config's, else its git root), under this and the folder. */
+const LAST_PROJECT_PREFIX = 'qa-last-project:'
+/** The pinned CLI, as the skill and the relay run it; REPLAY_QA_CLI runs a checkout instead. */
+const REPLAYQA = ['npx', '--yes', 'replayqa@0.6.0']
+/** The plugin's MCP server (.mcp.json), and the tool that lets a process run as the person who signed in to it. */
+const MCP_SERVER = 'replay-qa'
+const MCP_CREDENTIAL_TOOL = 'create_cli_credential'
+/** After the MCP server had no sign-in to give, how long until a background check asks again. A person's command always asks. */
+const SIGN_IN_RETRY_MS = 5 * 60_000
+/** A slow or unreachable MCP server costs this at most: nothing here waits on it for longer. */
+const MINT_TIMEOUT_MS = 8_000
+const CLI_TIMEOUT_MS = 90_000
 const MAX_CELLS = 255
 // A terminal cell is about twice as tall as it is wide.
 const CELL_ASPECT = 2.1
@@ -101,13 +116,14 @@ const state = {
   rows: new Map<string, Row>(),
   /** Why a row has no player (the relay refused, the token is missing). */
   rowErrors: new Map<string, string>(),
+  /** The project a row with no player is about. */
+  rowProjects: new Map<string, string>(),
   frames: {} as Record<string, FrameInfo>,
   /** What each Image was last drawn with, so a frame of the same size can be blitted. */
   mounted: new Map<string, { columns: number; rows: number; width: number; height: number }>(),
   offscreen: new Set<string>(),
   watcher: 0,
   overviewWatcher: 0,
-  lastProjectId: null as string | null,
   overviews: new Map<string, Overview>(),
   /** project id -> when it last had live work (or was followed), for letting idle ones go. */
   activeAt: new Map<string, number>(),
@@ -117,6 +133,32 @@ const state = {
   /** Recordings that ended while their screencast was live, parked at the end. */
   parked: new Set<string>(),
   canvasProjectId: null as string | null,
+  /** Why the canvas has no picture (no renderer). */
+  canvasError: null as string | null,
+  /** Why this project is the one showing, when nothing in the folder names it. */
+  canvasNote: null as string | null,
+  /** What the pane holds: a project's canvas, or the folder's index or setup list. */
+  paneView: 'canvas' as 'canvas' | 'folder',
+  /** The `replayqa` the plugin runs. */
+  cli: REPLAYQA as readonly string[],
+  /** What `replayqa detect` last said about the session's folder; null when it did not run. */
+  detection: null as Detection | null,
+  /** Why it did not run. */
+  detectionWhy: null as string | null,
+  folderName: '',
+  folderView: 'setup' as 'index' | 'setup',
+  folderBusy: null as string | null,
+  folderError: null as string | null,
+  /** An app waiting to be confirmed, by its setup's cwd. */
+  confirm: null as { key: string; isBusy: boolean } | null,
+  summaries: {} as Record<string, Summary>,
+  /** The `replayqa run` processes the relay supervises for this session. */
+  tunnels: [] as Tunnel[],
+  /** The relay's sign-ins, as of the last time it was asked. */
+  auth: { mcp: [] as { origin: string; expiresAt: number }[], existing: false, askedAt: 0 },
+  /** What the MCP server last said to a request for a credential, for what the list tells the person to do. */
+  mcpAnswer: null as 'gave' | 'needs-sign-in' | 'cannot-share' | null,
+  signingIn: null as Promise<void> | null,
   /** Where the canvas picture sits in the pane body, for the wheel; the screencast size last asked for. */
   canvasPicture: null as { top: number; columns: number; rows: number } | null,
   canvasAsked: null as { width: number; height: number } | null,
@@ -137,9 +179,11 @@ const relayUrl = (path: string) => {
 }
 
 async function relayJson<T>($: EngineInterface, path: string, body?: unknown): Promise<T> {
+  // The header is what only this module has: what a page can do, its URL's token allows.
+  const hook: Record<string, string> = state.relay?.hookToken ? { 'x-replay-qa-hook-token': state.relay.hookToken } : {}
   const response = await $.http.fetch(relayUrl(path), body === undefined
-    ? {}
-    : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    ? { headers: hook }
+    : { method: 'POST', headers: { 'content-type': 'application/json', ...hook }, body: JSON.stringify(body) })
   const parsed = response.text ? JSON.parse(response.text) : null
   if (!response.ok) throw new Error(parsed?.error ?? `relay answered ${response.status}`)
   return parsed as T
@@ -190,29 +234,70 @@ function openUrl($: EngineInterface, url: string): void {
 
 const playerPage = (recordingId: string) => relayUrl(`/player/${encodeURIComponent(recordingId)}?mode=auto&chrome=1`)
 const canvasPage = (projectId: string) => relayUrl(`/canvas/${encodeURIComponent(projectId)}`)
+const folderPage = () => relayUrl('/folder')
 
 // ---------------------------------------------------------------- projects
 
-/**
- * `.replay/config.json` at the git root: the replayqa CLI keeps `qa-project-id` there, and its
- * CLI the QA server its tunnel talks to (`proxy.qa-url`, set for a PR preview or staging).
- */
-async function readConfig($: EngineInterface): Promise<{ projectId: string | null; qaUrl: string | null }> {
+/** The session's folder, and every folder from it up to the git root (it alone outside git). */
+async function sessionFolder($: EngineInterface): Promise<{ cwd: string; dirs: string[] }> {
+  // `/cd` and a worktree move the session; a hook's `$` says where it is now.
+  const cwd = (await $.session.cwd().catch(() => null)) ?? state.cwd ?? '.'
   try {
-    const top = await $.process.run(['git', 'rev-parse', '--show-toplevel'], { timeoutMs: 5_000, ...(state.cwd ? { cwd: state.cwd } : {}) })
-    const root = top.exitCode === 0 ? top.stdout.trim() : state.cwd
-    if (!root) return { projectId: null, qaUrl: null }
-    const config = JSON.parse(await $.fs.read(`${root}/.replay/config.json`)) as Record<string, any>
-    const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
-    return { projectId: text(config['qa-project-id']), qaUrl: text(config.proxy?.['qa-url']) }
-  } catch {
-    return { projectId: null, qaUrl: null }
-  }
+    const git = await $.process.run(['git', 'rev-parse', '--show-toplevel', '--show-prefix'], { timeoutMs: 5_000, cwd })
+    const [top, prefix = ''] = git.stdout.split('\n').map(line => line.trim())
+    if (git.exitCode === 0 && top) {
+      const parts = prefix.split('/').filter(Boolean)
+      return { cwd, dirs: parts.map((_, i) => [top, ...parts.slice(0, parts.length - i)].join('/')).concat(top) }
+    }
+  } catch {}
+  return { cwd, dirs: [cwd] }
 }
 
-/** The project to act on: the one named, else the repo's configured one, else the last seen. */
+type FolderConfig = {
+  /** The folder the last-project fallback is kept under: the nearest config's, else the git root. */
+  folderKey: string
+  /** The folder of the nearest config, when there is one. */
+  dir: string | null
+  projectId: string | null
+  qaUrl: string | null
+}
+
+/**
+ * The nearest `.replay/config.json`, from the session's folder up to the git root: the replayqa CLI keeps
+ * `qa-project-id` there, and the QA server its tunnel talks to (`proxy.qa-url`, set for a PR preview or
+ * staging). The first one found wins, as it does for the CLI.
+ */
+async function readConfig($: EngineInterface): Promise<FolderConfig> {
+  const { dirs } = await sessionFolder($)
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  for (const dir of dirs) {
+    let raw: string
+    try {
+      raw = await $.fs.read(`${dir}/.replay/config.json`)
+    } catch {
+      continue
+    }
+    try {
+      const config = JSON.parse(raw) as Record<string, any>
+      return { folderKey: dir, dir, projectId: text(config['qa-project-id']), qaUrl: text(config.proxy?.['qa-url']) }
+    } catch {
+      return { folderKey: dir, dir, projectId: null, qaUrl: null }
+    }
+  }
+  return { folderKey: dirs.at(-1)!, dir: null, projectId: null, qaUrl: null }
+}
+
+/** The project last seen in this folder. Never one seen in another: a folder with no config has no project of its own to show. */
+async function lastProject($: EngineInterface, folderKey: string): Promise<string | null> {
+  const id = await $.store.get(`${LAST_PROJECT_PREFIX}${folderKey}`).catch(() => null)
+  return typeof id === 'string' ? id : null
+}
+
+/** The project to act on: the one named, else the folder's nearest config's, else the last seen in this folder. */
 async function resolveProjectId($: EngineInterface, named?: string | null): Promise<string | null> {
-  return named || (await readConfig($)).projectId || state.lastProjectId
+  if (named) return named
+  const config = await readConfig($)
+  return config.projectId ?? (await lastProject($, config.folderKey))
 }
 
 /**
@@ -221,20 +306,19 @@ async function resolveProjectId($: EngineInterface, named?: string | null): Prom
  */
 function parseProjectArg(arg: string | undefined): { projectId?: string; server?: string } {
   if (!arg) return {}
-  const projectId = /proj-[A-Za-z0-9_-]+/.exec(arg)?.[0]
+  const projectId = /proj[-_][A-Za-z0-9_-]+/.exec(arg)?.[0]
   return { ...(projectId ? { projectId } : {}), ...(/^https?:\/\//.test(arg) ? { server: arg } : {}) }
 }
 
-/** The QA server a project is on when nothing named one: the repo's `proxy.qa-url`, for the repo's project. */
+/** The QA server a project is on when nothing named one: its config's `proxy.qa-url`, for the folder's project. */
 async function configServer($: EngineInterface, projectId: string): Promise<string | undefined> {
   const config = await readConfig($)
   return config.qaUrl && config.projectId === projectId ? config.qaUrl : undefined
 }
 
 async function rememberProject($: EngineInterface, projectId: string): Promise<void> {
-  if (state.lastProjectId === projectId) return
-  state.lastProjectId = projectId
-  await $.store.set(LAST_PROJECT_KEY, projectId)
+  const { folderKey } = await readConfig($)
+  await $.store.set(`${LAST_PROJECT_PREFIX}${folderKey}`, projectId)
 }
 
 /**
@@ -255,6 +339,389 @@ async function unfollowProject($: EngineInterface, projectId: string): Promise<v
   await relayJson($, '/qa/follow', { projectId, on: false })
   state.overviews.delete(projectId)
   state.activeAt.delete(projectId)
+}
+
+// ----------------------------------------------------------------- sign-in
+
+type Minted = { credential: string; qaUrl: string | null }
+
+/**
+ * A credential from the Replay QA MCP server the person signed in to, which signs the relay in; null when it
+ * cannot give one, and everything then uses what it always has: REPLAY_QA_API_KEY, then `replayqa login`.
+ * What comes back is a secret until it is exchanged: it goes to the relay, never to a log, a toast, a URL or argv.
+ *
+ * Call this only from a hook. The engine puts the call to the session's permission mode, and the `tool.check`
+ * hook that allows it is skipped when the plugin's own code raised the call from outside a hook: from a
+ * button, a timer or a loop the person would get a dialog about a tool they never asked for. So the relay,
+ * once signed in, mints what each process needs itself.
+ *
+ * Being connected says nothing about being signed in: a server may list its tools to anyone and answer
+ * 401 only to a call. And a server without the tool (production, until it ships) fails the same way for
+ * someone signed in and someone not, so that case tells nobody to sign in: it would not help.
+ */
+async function mintCredential($: EngineInterface): Promise<Minted | null> {
+  // A server's 401, as the engine words it ("needs you to sign in again"), not a server saying it has none to share.
+  const asksForSignIn = (text: string) => /needs you to sign in|re-?authenticate|authentication required|unauthori[sz]ed|\b401\b/i.test(text)
+  const ask = async (): Promise<Minted | null> => {
+    let server = MCP_SERVER
+    let refusedSignIn = false
+    try {
+      const connected = await $.mcp.connect(MCP_SERVER)
+      if (connected.isConnected) server = connected.server
+      else refusedSignIn = connected.reason === 'auth'
+      // Refused or not, one the person added under this name (say, a PR preview's) answers below.
+    } catch {}
+    try {
+      const result = await $.mcp.call(server, MCP_CREDENTIAL_TOOL, {})
+      const text = result.content.find(block => block.type === 'text')?.text
+      if (result.isError || !text) {
+        // The engine answers a server's 401 as an errored result, and marks the server as needing a sign-in.
+        state.mcpAnswer = asksForSignIn(text ?? '') ? 'needs-sign-in' : 'cannot-share'
+        return null
+      }
+      const { credential, qa_url: qaUrl } = JSON.parse(text) as { credential?: unknown; qa_url?: unknown }
+      if (typeof credential !== 'string' || !credential.startsWith('mcl_')) {
+        state.mcpAnswer = 'cannot-share'
+        return null
+      }
+      state.mcpAnswer = 'gave'
+      return { credential, qaUrl: typeof qaUrl === 'string' ? qaUrl : null }
+    } catch (err) {
+      // Its words only decide what to tell the person: they stay out of the log, whatever came back.
+      state.mcpAnswer = refusedSignIn || asksForSignIn(message(err)) ? 'needs-sign-in' : 'cannot-share'
+      return null
+    }
+  }
+  const tooSlow = $.clock.sleep(MINT_TIMEOUT_MS).then(() => {
+    state.mcpAnswer ??= 'cannot-share'
+    return null
+  })
+  return Promise.race([ask(), tooSlow])
+}
+
+/**
+ * Gives the relay the MCP sign-in, which it exchanges and refreshes for itself. From a hook only (see
+ * mintCredential). Lazily, so a session that never touches Replay QA mints nothing; `force` is a person's
+ * command, who may just have signed in.
+ */
+function signRelayIn($: EngineInterface, { force = false }: { force?: boolean } = {}): Promise<void> {
+  if (!state.relay) return Promise.resolve()
+  if (state.signingIn) return state.signingIn
+  if (!force && Date.now() - state.auth.askedAt < SIGN_IN_RETRY_MS) return Promise.resolve()
+  state.signingIn = (async () => {
+    const asked = await relayJson<{ mcp: { origin: string; expiresAt: number }[]; existing: boolean }>($, '/auth/status')
+    state.auth = { ...asked, askedAt: Date.now() }
+    if (asked.mcp.length) return
+    const minted = await mintCredential($)
+    if (!minted) return
+    await relayJson($, '/auth/credential', { credential: minted.credential })
+    const after = await relayJson<{ mcp: { origin: string; expiresAt: number }[]; existing: boolean }>($, '/auth/status')
+    state.auth = { ...after, askedAt: Date.now() }
+  })()
+    .catch(err => {
+      state.auth.askedAt = Date.now()
+      $.ui.log(`replay-qa: sign-in: ${message(err)}`, { to: 'debug' })
+    })
+    .finally(() => { state.signingIn = null })
+  return state.signingIn
+}
+
+/**
+ * How the person is signed in, as the lists say it, and what to do when they are not: `replayqa login`
+ * always works, and /mcp is offered only when the server has asked for a sign-in, as otherwise it would
+ * change nothing.
+ */
+function signInLine(): string {
+  if (state.auth.mcp.length) return 'Signed in through the replay-qa MCP server.'
+  if (state.auth.existing) return 'Using your existing Replay sign-in.'
+  if (state.mcpAnswer === 'needs-sign-in') return 'Not signed in: run /mcp and sign in to replay-qa, or run npx --yes replayqa@0.6.0 login.'
+  return 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.6.0 login: the replay-qa MCP server cannot share its sign-in with them yet.'
+}
+
+// ------------------------------------------------------------------ folder
+
+/** The first line of what a failed `replayqa` said worth showing: npm's chatter and a stack trace are not. */
+function cliFailure(stderr: string): string {
+  const line = stderr.split('\n').map(text => text.trim()).find(text => text && !/^(?:npm (?:warn|notice)\b|at\s)/.test(text))
+  return (line ?? 'it printed nothing').replace(/^(?:\w*Error:|npm error(?: code)?:?|error:)\s*/, '').slice(0, 300)
+}
+
+const cliIsMissing = (stderr: string) => /notarget|no matching version|ETARGET|E404|unknown command/i.test(stderr)
+const cliIsOffline = (stderr: string) => /ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|ECONNRESET|network/i.test(stderr)
+
+/** What the pane says when `replayqa detect` could not run, as a whole sentence. */
+function whyNoDetection(stderr: string): string {
+  if (cliIsMissing(stderr)) return `Detection isn't available yet: ${state.cli.at(-1)} isn't published.`
+  if (cliIsOffline(stderr)) return 'Detection didn\'t run: npm could not be reached to get replayqa. Are you offline?'
+  return `Detection didn't run: replayqa detect failed: ${cliFailure(stderr)}`
+}
+
+/** What `replayqa detect` says of the session's folder, or why it could not say. It reads files and runs nothing there. */
+async function detectFolder($: EngineInterface, { apps = false } = {}): Promise<{ detection: Detection } | { why: string }> {
+  const { cwd } = await sessionFolder($)
+  let stdout: string
+  try {
+    const ran = await $.process.run([...state.cli, 'detect', ...(apps ? ['--apps'] : []), '--json'], { cwd, timeoutMs: CLI_TIMEOUT_MS })
+    if (ran.exitCode !== 0) return { why: whyNoDetection(ran.stderr || ran.stdout) }
+    stdout = ran.stdout
+  } catch (err) {
+    return { why: `Detection didn't run: replayqa could not be run: ${message(err)}` }
+  }
+  const [parsed] = jsonValues(stdout) as [Detection | undefined]
+  return parsed && Array.isArray(parsed.projects) && Array.isArray(parsed.apps)
+    ? { detection: parsed }
+    : { why: "Detection didn't run: replayqa detect did not print what was expected." }
+}
+
+/** Tells the relay what the browser view of the folder shows. */
+async function tellRelayFolder($: EngineInterface): Promise<void> {
+  await relayJson($, '/qa/folder', {
+    view: state.folderView, folder: state.detection, why: state.detectionWhy, error: state.folderError,
+    signIn: signInLine(),
+  }).catch(err => $.ui.log(`replay-qa: folder: ${message(err)}`, { to: 'debug' }))
+}
+
+async function refreshSummaries($: EngineInterface): Promise<void> {
+  const { summaries } = await relayJson<{ summaries: Record<string, Summary> }>($, '/qa/folder')
+  if (JSON.stringify(summaries) === JSON.stringify(state.summaries)) return
+  state.summaries = summaries
+  $.ui.invalidate('ui.render')
+}
+
+async function openPane($: EngineInterface, { focus = false } = {}): Promise<void> {
+  await $.ui.open({ id: PANE, title: 'Replay QA', rows: 26, ...(focus ? { focus: true as const } : {}) })
+}
+
+/** Stops the canvas screencast, if one runs, and forgets the camera. */
+async function leaveCanvas($: EngineInterface): Promise<void> {
+  const projectId = state.canvasProjectId
+  state.canvasProjectId = null
+  state.canvasError = null
+  state.canvasPicture = null
+  state.canvasAsked = null
+  state.camera = null
+  if (projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false }).catch(() => {})
+}
+
+/** The pane on the folder's index or setup list, in the terminal and the browser. */
+async function showFolder($: EngineInterface, view: 'index' | 'setup'): Promise<void> {
+  await leaveCanvas($)
+  state.paneView = 'folder'
+  state.folderView = view
+  state.folderBusy = null
+  await tellRelayFolder($)
+  await openPane($, { focus: true })
+  if (view === 'index') void refreshSummaries($).catch(() => {})
+  $.ui.invalidate('ui.render')
+}
+
+const projectList = (projects: DetectedProject[]) => projects.map(p => `- ${p.project_id} (${p.path === '.' ? 'this folder' : p.path})`).join('\n')
+
+/**
+ * `/replayqa` from the session's folder: one project opens its canvas, several the index, none the list to
+ * set one up. With no detection, the nearest config stands in for it, and the pane says why.
+ */
+async function openFolder($: EngineInterface, { apps = false } = {}): Promise<string> {
+  const config = await readConfig($)
+  state.folderName = config.folderKey.split('/').pop() || config.folderKey
+  state.folderError = null
+  state.confirm = null
+  // While detection runs (npx can take a while the first time) the pane says so.
+  await leaveCanvas($)
+  state.paneView = 'folder'
+  state.folderBusy = 'Looking at this folder…'
+  await openPane($)
+  $.ui.invalidate('ui.render')
+
+  const found = await detectFolder($, { apps })
+  state.folderBusy = null
+  state.detection = 'detection' in found ? found.detection : null
+  state.detectionWhy = 'why' in found ? found.why : null
+  const projects = state.detection?.projects ?? []
+
+  if (!apps) {
+    if (projects.length > 1) {
+      await showFolder($, 'index')
+      return `${projects.length} Replay QA projects in ${state.detection!.name}. Choose one in the pane, or /replayqa canvas <project id>:\n${projectList(projects)}`
+    }
+    const only = projects[0]
+    const projectId = only?.project_id ?? config.projectId ?? (await lastProject($, config.folderKey))
+    if (projectId) {
+      await showCanvas($, projectId, only?.qa_url ?? (config.projectId === projectId ? config.qaUrl : null) ?? undefined)
+      // No config names it: it is here only because it was the last one used in this folder, so that is said.
+      state.canvasNote = only || config.projectId === projectId ? null : 'This is the last project used in this folder: no .replay/config.json names one. /replayqa setup shows what else is here.'
+      const o = state.overviews.get(projectId)
+      return [
+        `Replay QA canvas for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.`,
+        state.canvasNote ?? '',
+        state.detectionWhy ?? '',
+        o?.error ? `It could not be read: ${o.error}` : '',
+        state.canvasError ? `It has no picture: ${state.canvasError}` : '',
+      ].filter(Boolean).join('\n')
+    }
+  }
+
+  await showFolder($, 'setup')
+  const name = state.detection?.name ?? state.folderName
+  if (!state.detection) return `No .replay/config.json names a Replay QA project for ${name}. ${state.detectionWhy} The pane offers linking an existing project (/replayqa use <project>) and testing a public URL (/replayqa test <url>).`
+  const listed = state.detection.apps.map(app => `${app.name} (${app.path})`).join(', ')
+  if (!state.detection.apps.length) return `No Replay QA project in ${name}, and nothing here looks like an app to start. /replayqa use <project> links an existing project, and /replayqa test <url> tests a public URL.`
+  return `${projects.length ? `Apps in ${name}` : `No Replay QA project in ${name} yet. Apps found`}, as suggestions to confirm: ${listed}. Their commands are in the pane. /replayqa start <path> starts one, /replayqa use <project> links an existing project, /replayqa test <url> tests a public URL.`
+}
+
+function findApp(ref: string): DetectedApp | undefined {
+  return state.detection?.apps.find(app => app.setup?.cwd === ref || app.path === ref || app.name === ref)
+}
+
+/** Asks before starting: the command runs on this machine and testing uses QA credits. */
+async function askToStart($: EngineInterface, app: DetectedApp): Promise<void> {
+  if (!app.setup) return
+  const key = app.setup.cwd
+  state.confirm = { key, isBusy: false }
+  state.folderError = null
+  $.ui.invalidate('ui.render')
+  if (!app.port) return
+  const { isOpen } = await relayJson<{ isOpen: boolean }>($, `/ports/${app.port}`)
+  if (state.confirm?.key !== key) return
+  state.confirm = { key, isBusy: isOpen }
+  $.ui.invalidate('ui.render')
+}
+
+/** Starts an app and its tunnel, under the relay, which gives it a credential of its own. `noApp` connects what already runs. */
+async function startApp($: EngineInterface, app: DetectedApp, noApp = false): Promise<Tunnel> {
+  if (!app.setup) throw new Error(`No command to start ${app.name} was found.`)
+  const args = noApp
+    ? [...app.setup.args.filter((arg, i, all) => arg !== '--app-command' && all[i - 1] !== '--app-command'), '--no-app']
+    : app.setup.args
+  const tunnel = await relayJson<Tunnel>($, '/tunnels', { key: app.setup.cwd, label: app.name, args, cwd: app.setup.cwd, targetUrl: app.setup.target_url })
+  state.confirm = null
+  state.tunnels = [...state.tunnels.filter(t => t.key !== tunnel.key), tunnel]
+  $.ui.invalidate('ui.render')
+  return tunnel
+}
+
+async function stopTunnel($: EngineInterface, key: string): Promise<void> {
+  await relayJson($, `/tunnels/${encodeURIComponent(key)}/stop`, {})
+}
+
+/** Links the folder through the CLI; if it cannot run (not published yet, offline), writes the same file itself. */
+async function linkProject($: EngineInterface, value: string, projectId: string): Promise<void> {
+  const { cwd, dirs } = await sessionFolder($)
+  let stderr = ''
+  try {
+    const ran = await $.process.run([...state.cli, 'link', value], { cwd, timeoutMs: CLI_TIMEOUT_MS })
+    if (ran.exitCode === 0) return
+    stderr = ran.stderr || ran.stdout
+  } catch (err) {
+    stderr = `ETIMEDOUT ${message(err)}`
+  }
+  if (!cliIsMissing(stderr) && !cliIsOffline(stderr)) throw new Error(cliFailure(stderr))
+  const config = await readConfig($)
+  let dir = config.dir
+  for (const candidate of dirs) {
+    if (dir) break
+    if (await $.fs.exists(`${candidate}/package.json`)) dir = candidate
+  }
+  dir ??= dirs.at(-1)!
+  let current: Record<string, unknown> = {}
+  try {
+    current = JSON.parse(await $.fs.read(`${dir}/.replay/config.json`)) as Record<string, unknown>
+  } catch {}
+  const existing = current['qa-project-id']
+  if (typeof existing === 'string' && existing.trim() && existing.trim() !== projectId) {
+    throw new Error(`.replay/config.json already contains qa-project-id ${existing.trim()}; not overwriting it with ${projectId}.`)
+  }
+  const origin = /^https?:\/\//.test(value) ? new URL(value).origin : null
+  const proxy = origin && origin !== 'https://qa.replay.io' ? { proxy: { ...(current.proxy as object | undefined), 'qa-url': origin } } : {}
+  await $.fs.write(`${dir}/.replay/config.json`, `${JSON.stringify({ ...current, 'qa-project-id': projectId, ...proxy }, null, 2)}\n`)
+}
+
+/** "Use an existing project": writes `qa-project-id` for this folder and opens its canvas. */
+async function useProject($: EngineInterface, value: string): Promise<string> {
+  const named = parseProjectArg(value)
+  if (!named.projectId) throw new Error(`${value} is not a Replay QA project id (proj-…) or dashboard URL.`)
+  await linkProject($, value, named.projectId)
+  const found = await detectFolder($)
+  if ('detection' in found) state.detection = found.detection
+  await showCanvas($, named.projectId, named.server ?? (await configServer($, named.projectId)))
+  return `This folder now uses Replay QA project ${named.projectId}.`
+}
+
+/** "Test a public URL": creates a project for it, on a credential of its own, and opens its canvas. */
+async function testPublicUrl($: EngineInterface, value: string): Promise<string> {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`${value} is not a full URL: it needs its https://.`)
+  }
+  if (!/^https?:$/.test(url.protocol)) throw new Error(`${value} is not a web address.`)
+  if (/^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(url.hostname)) {
+    throw new Error(`${url.host} is on this machine, so Replay QA can't reach it without a tunnel: start the app from the list, or with replayqa run.`)
+  }
+  const minted = await relayJson<{ credential: string | null; qaUrl: string | null }>($, '/auth/mint', {}).catch(() => null)
+  const { cwd } = await sessionFolder($)
+  const ran = await $.process.run([...state.cli, 'bootstrap', url.toString(), '--public'], {
+    cwd,
+    timeoutMs: CLI_TIMEOUT_MS,
+    ...(minted?.credential ? { env: { REPLAY_QA_API_KEY: minted.credential, ...(minted.qaUrl ? { REPLAY_QA_URL: minted.qaUrl } : {}) } } : {}),
+  })
+  // It prints the project first, so a project it made is opened even if what it asks next fails.
+  const { projectId } = parseQaOutput(ran.stdout)
+  if (!projectId) throw new Error(ran.exitCode === 0 ? 'replayqa bootstrap did not say which project it made.' : cliIsMissing(ran.stderr) ? `${state.cli.at(-1)} isn't published yet.` : cliFailure(ran.stderr))
+  await showCanvas($, projectId, minted?.qaUrl ?? undefined)
+  return `Replay QA is testing ${url.toString()} in project ${projectId}.`
+}
+
+/** A press, in the pane or the browser view: what it starts runs on, and what goes wrong shows in the pane. */
+function act($: EngineInterface, busy: string | null, work: () => Promise<unknown>): void {
+  state.folderBusy = busy
+  state.folderError = null
+  $.ui.invalidate('ui.render')
+  void work()
+    .catch(err => { state.folderError = message(err) })
+    .finally(() => {
+      state.folderBusy = null
+      $.ui.invalidate('ui.render')
+      if (state.paneView === 'folder') void tellRelayFolder($)
+    })
+}
+
+/** A press in the browser view, which only the relay saw: checked here, as anything with the page's URL can post one. */
+function handleFolderAction($: EngineInterface, action: Record<string, unknown>): void {
+  const value = typeof action.value === 'string' ? action.value.trim() : ''
+  const key = typeof action.key === 'string' ? action.key : ''
+  if (action.type === 'start') {
+    const app = findApp(key)
+    if (app) act($, `Starting ${app.name}…`, () => startApp($, app, action.noApp === true))
+  } else if (action.type === 'stop' && state.tunnels.some(t => t.key === key)) {
+    act($, null, () => stopTunnel($, key))
+  } else if (action.type === 'use' && value) {
+    act($, `Linking ${value}…`, () => useProject($, value))
+  } else if (action.type === 'test' && value) {
+    act($, `Setting up ${value}…`, () => testPublicUrl($, value))
+  }
+}
+
+/** A tunnel's project exists now: the folder has a project, and its canvas is what to look at. */
+async function projectFromTunnel($: EngineInterface, tunnel: Tunnel): Promise<void> {
+  $.ui.toast(`Replay QA project ${tunnel.projectId} is set up for ${tunnel.label}.`)
+  const found = await detectFolder($)
+  if ('detection' in found) state.detection = found.detection
+  if (state.paneView === 'folder') await showCanvas($, tunnel.projectId!, tunnel.qaUrl ?? undefined)
+  else await followProject($, tunnel.projectId!, tunnel.qaUrl ?? undefined)
+}
+
+function updateTunnels($: EngineInterface, tunnels: Tunnel[]): void {
+  const before = new Map(state.tunnels.map(t => [t.key, t]))
+  if (JSON.stringify(tunnels) === JSON.stringify(state.tunnels)) return
+  state.tunnels = tunnels
+  for (const tunnel of tunnels) {
+    if (tunnel.projectId && !before.get(tunnel.key)?.projectId) {
+      void projectFromTunnel($, tunnel).catch(err => $.ui.log(`replay-qa: ${message(err)}`, { to: 'debug' }))
+    }
+  }
+  $.ui.invalidate('ui.render')
 }
 
 function liveCount(): number {
@@ -346,6 +813,8 @@ async function handleQaResult(
     return
   }
   const server = command?.server ?? parsed.qaUrl ?? (await configServer($, projectId))
+  state.rowProjects.set(rowId, projectId)
+  await signRelayIn($)
   const overview = await followProject($, projectId, server)
   if (startedExploration && parsed.explorationId) {
     await attachRow($, rowId, {
@@ -385,20 +854,20 @@ async function reviveRow($: EngineInterface, row: Row): Promise<void> {
 // ------------------------------------------------------------------ canvas
 
 async function showCanvas($: EngineInterface, projectId: string, server?: string): Promise<void> {
+  if (state.canvasProjectId && state.canvasProjectId !== projectId) await leaveCanvas($)
   await followProject($, projectId, server)
+  state.paneView = 'canvas'
   state.canvasProjectId = projectId
-  await $.ui.open({ id: PANE, title: 'Replay QA', rows: 26 })
-  await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width: 1600, height: 900 })
+  state.canvasError = null
+  state.canvasNote = null
+  await openPane($)
+  try {
+    await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width: 1600, height: 900 })
+  } catch (err) {
+    // No renderer: the pane says so, and the browser view still works.
+    state.canvasError = message(err)
+  }
   $.ui.invalidate('ui.render')
-}
-
-async function hideCanvas($: EngineInterface): Promise<void> {
-  const projectId = state.canvasProjectId
-  state.canvasProjectId = null
-  state.canvasPicture = null
-  state.canvasAsked = null
-  state.camera = null
-  if (projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false }).catch(() => {})
 }
 
 type CameraMove =
@@ -430,7 +899,8 @@ function moveCamera($: EngineInterface, move: CameraMove): void {
       const pct = (c: CameraState | null) => (c ? Math.round(c.k * 100) : null)
       if (pct(before) !== pct(state.camera) || JSON.stringify(before?.minimap) !== JSON.stringify(state.camera.minimap)) $.ui.invalidate('ui.render')
     })
-    .catch(err => $.ui.log(`replay-qa: canvas camera: ${message(err)}`))
+    // Asked before the screencast's first frame, the relay says it is not on screen yet: not worth a row.
+    .catch(err => $.ui.log(`replay-qa: canvas camera: ${message(err)}`, { to: 'debug' }))
 }
 
 /** The screencast takes the pane picture's shape: asked again when it changes by more than a little. */
@@ -454,7 +924,7 @@ async function watchFrames($: EngineInterface): Promise<void> {
   const watcher = ++state.watcher
   let version = -1
   while (state.watcher === watcher && state.relay) {
-    let snapshot: { version: number; frames: Record<string, FrameInfo> }
+    let snapshot: { version: number; frames: Record<string, FrameInfo>; tunnels?: Tunnel[]; actions?: Record<string, unknown>[] }
     try {
       snapshot = await relayJson($, `/frames?version=${version}`)
     } catch {
@@ -462,6 +932,8 @@ async function watchFrames($: EngineInterface): Promise<void> {
       continue
     }
     version = snapshot.version
+    if (snapshot.tunnels) updateTunnels($, snapshot.tunnels)
+    for (const action of snapshot.actions ?? []) handleFolderAction($, action)
     let redraw = false
     for (const [id, fresh] of Object.entries(snapshot.frames)) {
       const before = state.frames[id]
@@ -516,6 +988,7 @@ async function watchOverviews($: EngineInterface): Promise<void> {
   const watcher = ++state.overviewWatcher
   while (state.overviewWatcher === watcher && state.relay) {
     let changed = false
+    if (state.paneView === 'folder' && state.folderView === 'index') await refreshSummaries($).catch(() => {})
     for (const projectId of [...state.overviews.keys()]) {
       try {
         const before = state.overviews.get(projectId)
@@ -557,11 +1030,12 @@ export const register: Register = on => {
       if (key.startsWith(STORE_PREFIX)) {
         const row = (await $.store.get(key)) as Row | undefined
         if (row?.recordingId) state.rows.set(key.slice(STORE_PREFIX.length), row)
-      } else if (key === LAST_PROJECT_KEY) {
-        const id = await $.store.get(key)
-        if (typeof id === 'string') state.lastProjectId = id
+      } else if (key === OLD_LAST_PROJECT_KEY) {
+        await $.store.delete(key)
       }
     }
+    const cli = await $.env.get('REPLAY_QA_CLI').catch(() => undefined)
+    state.cli = cli?.trim() ? cli.trim().split(/\s+/) : REPLAYQA
     try {
       state.relay = await startRelay($)
       // They end with the session: a wait the unloading engine aborts is not an error.
@@ -573,20 +1047,50 @@ export const register: Register = on => {
     }
     await $.command.register({
       name: 'replayqa',
-      description: 'Live Replay QA: the canvas of every journey, running explorations and re-tests',
-      argumentHint: '[canvas|follow|unfollow|live|open] [project id, dashboard URL or recording]',
+      description: "Replay QA for this folder: its project's canvas of every journey, the index of its projects, or the list to set one up",
+      argumentHint: '[canvas|setup|use|test|start|stop|follow|unfollow|live|open|status] [project id, dashboard URL, app path or recording]',
     })
     return started
   })
 
   on('command.run', { command: 'replayqa' }, async ($, e) => {
     if (!state.relay) return { text: `The Replay QA relay is not running${state.relayError ? `: ${state.relayError}` : ''}.` }
-    const [verb = '', arg] = e.args.trim().split(/\s+/)
+    const [first = '', arg] = e.args.trim().split(/\s+/)
+    // A project id or dashboard URL alone means its canvas.
+    const verb = parseProjectArg(first).projectId ? 'canvas' : first
+    const named = parseProjectArg(parseProjectArg(first).projectId ? first : arg)
     try {
+      // A person's command is a hook, so the MCP sign-in can reach the relay from here, and they may just have signed in.
+      if (!['live', 'open', 'status'].includes(verb)) await signRelayIn($, { force: true })
+      if (verb === '' || (verb === 'canvas' && !arg && !named.projectId)) return { text: await openFolder($) }
+      if (verb === 'setup') return { text: await openFolder($, { apps: true }) }
+      if (verb === 'use') {
+        if (!arg) return { text: 'Pass the project: /replayqa use <project id or dashboard URL>.' }
+        return { text: await useProject($, arg) }
+      }
+      if (verb === 'test') {
+        if (!arg) return { text: 'Pass the address: /replayqa test <https://…>.' }
+        return { text: await testPublicUrl($, arg) }
+      }
+      if (verb === 'stop') {
+        const running = state.tunnels.filter(t => t.isRunning)
+        const tunnel = arg ? running.find(t => t.key === arg || t.label === arg || t.key.endsWith(`/${arg}`)) : running.length === 1 ? running[0] : undefined
+        if (!tunnel) return { text: running.length ? `Name one of these: ${running.map(t => t.label).join(', ')}.` : 'No tunnel is running.' }
+        await stopTunnel($, tunnel.key)
+        return { text: `Stopping ${tunnel.label}.` }
+      }
+      if (verb === 'start') {
+        const found = await detectFolder($, { apps: true })
+        if ('why' in found) return { text: found.why }
+        state.detection = found.detection
+        const app = arg ? findApp(arg) : found.detection.apps.length === 1 ? found.detection.apps[0] : undefined
+        if (!app) return { text: `Name one of this folder's apps: ${found.detection.apps.map(a => a.path).join(', ') || 'none were found'}.` }
+        const tunnel = await startApp($, app)
+        return { text: `Starting ${tunnel.label} on ${tunnel.targetUrl}. It keeps running until /replayqa stop ${app.path} or the session ends.` }
+      }
       if (verb === 'canvas' || verb === 'follow' || verb === 'unfollow') {
-        const named = parseProjectArg(arg)
         const projectId = await resolveProjectId($, named.projectId)
-        if (!projectId) return { text: 'No Replay QA project: pass its id (proj-…) or dashboard URL, or run a Replay QA script first so .replay/config.json names one.' }
+        if (!projectId) return { text: 'This folder has no Replay QA project: /replayqa shows what is here, or pass a project id (proj-…) or dashboard URL.' }
         const server = named.server ?? (await configServer($, projectId))
         if (verb === 'unfollow') {
           await unfollowProject($, projectId)
@@ -613,9 +1117,12 @@ export const register: Register = on => {
         if (live.length === 0) return { text: 'Nothing is running in the Replay QA projects being followed.' }
         return { text: `Live now:\n${live.map(r => `- ◉ ${r.title} (${r.id}) · ${r.eventCount.toLocaleString()} events`).join('\n')}\n\nOpen one with /replayqa open <id>.` }
       }
-      const followed = [...state.overviews.values()]
-      if (followed.length === 0) return { text: `Replay QA live view is ready. Start an exploration, or use /replayqa canvas${state.lastProjectId ? ` (last project ${state.lastProjectId})` : ' <project id>'}.` }
-      return { text: `Following ${followed.map(o => `${o.project?.name ?? '?'} (${o.counts.live} live, ${o.counts.journeys} journeys, ${o.counts.bugs} with bugs)`).join('; ')}. /replayqa canvas shows them all.` }
+      if (verb === 'status') {
+        const followed = [...state.overviews.values()]
+        if (followed.length === 0) return { text: 'Nothing is being followed. /replayqa shows what is in this folder.' }
+        return { text: `Following ${followed.map(o => `${o.project?.name ?? '?'} (${o.counts.live} live, ${o.counts.journeys} journeys, ${o.counts.bugs} with bugs)`).join('; ')}. /replayqa canvas shows them all.` }
+      }
+      return { text: `Unknown: ${first}. Try /replayqa, or /replayqa canvas|setup|use|test|start|stop|follow|unfollow|live|open|status.` }
     } catch (err) {
       return { text: `Replay QA: ${message(err)}` }
     }
@@ -663,6 +1170,12 @@ export const register: Register = on => {
     moveCamera($, { op: 'zoom', factor: Math.pow(1.15, -Math.max(-6, Math.min(6, e.by))), x: (p.column + 0.5) / picture.columns, y: (row + 0.5) / picture.rows })
     return { deny: 'the canvas zoomed instead' }
   })
+
+  // `$.mcp.call` is put to the session's permission mode like any tool call, and nobody can answer for a press or a
+  // background sign-in: refused, the sign-in would silently never work outside auto mode. This plugin's own mint is
+  // allowed, by this; the model calling the tool itself asks as it would.
+  on('tool.check', { tool: /^mcp__.*replay[-_]?qa.*__create_cli_credential$/ }, ($, e, next) =>
+    next.origin.plugin === $.plugin.name ? { decision: 'allow' as const } : next(e))
 
   // The result of a Replay QA script run from Bash.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -738,7 +1251,7 @@ export const register: Register = on => {
           {commandLine}
           {header('Replay QA · live view')}
           {rowError ? <Text color="red" wrap="wrap">⚠ {rowError}</Text> : <Text dimColor>Waiting for the backend to start the run…</Text>}
-          {state.canvasProjectId === null && state.lastProjectId ? <Button key="canvas" label="Open canvas" onPress={() => { void showCanvas($, state.lastProjectId!) }} /> : null}
+          {state.canvasProjectId === null && state.rowProjects.get(id) ? <Button key="canvas" label="Open canvas" onPress={() => { void showCanvas($, state.rowProjects.get(id)!) }} /> : null}
         </Box>
       )
     }
@@ -821,14 +1334,44 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const projectId = state.canvasProjectId
     const { Box, Text, Button } = $.ui.resolve(e)
-    if (!projectId) return <Text dimColor>No project: run /replayqa canvas &lt;project id&gt;.</Text>
+    if (state.paneView === 'folder') {
+      const data: FolderData = {
+        view: state.folderView, name: state.folderName, detection: state.detection, why: state.detectionWhy, busy: state.folderBusy,
+        error: state.folderError, summaries: state.summaries, tunnels: state.tunnels, confirm: state.confirm, signIn: signInLine(),
+      }
+      const actions: FolderActions = {
+        openProject: project => act($, null, () => showCanvas($, project.project_id, project.qa_url ?? undefined)),
+        askToStart: app => act($, null, () => askToStart($, app)),
+        start: (app, noApp) => act($, `Starting ${app.name}…`, () => startApp($, app, noApp)),
+        cancelStart: () => { state.confirm = null; $.ui.invalidate('ui.render') },
+        stop: tunnel => act($, null, () => stopTunnel($, tunnel.key)),
+        openTunnel: tunnel => act($, null, () => showCanvas($, tunnel.projectId!, tunnel.qaUrl ?? undefined)),
+        copy: text => {
+          void $.ui.copy({ text, surface: e.surface }).then(copied => $.ui.toast(copied.isCopied ? 'Copied.' : 'Could not copy here: select the command instead.'))
+        },
+        use: value => act($, `Linking ${value}…`, () => useProject($, value)),
+        test: value => act($, `Setting up ${value}…`, () => testPublicUrl($, value)),
+        openInBrowser: () => openUrl($, folderPage()),
+        close: () => { void $.ui.close({ id: PANE }) },
+      }
+      const table = $.ui.resolve(e) as unknown as Required<FolderUi>
+      // A table may hold an element its surface does not draw: `mobile` has no field to type in.
+      const ui: FolderUi = { Box: table.Box, Text: table.Text, Button: table.Button, ...(e.surface === 'mobile' ? {} : { Input: table.Input }) }
+      return drawFolder(ui, data, actions)
+    }
+    if (!projectId) return <Text dimColor>No project: run /replayqa for this folder, or /replayqa canvas &lt;project id&gt;.</Text>
     const overview = state.overviews.get(projectId)
     const frame = state.frames[canvasFrameId(projectId)]
     const bodyRows = e.props.scroll.bodyRows > 0 ? e.props.scroll.bodyRows : Math.max(8, (e.viewport?.rows ?? 30) - 8)
     // The picture is the canvas, filling the pane between the header line and the footer line;
     // the screencast is asked for that shape, so nothing is letterboxed.
     const columns = Math.max(20, Math.min(MAX_CELLS, e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 100)))
-    const rows = Math.max(6, bodyRows - 2)
+    // What went wrong is a row of its own, wrapped: inside the picture it is too small to read, and in the
+    // footer it is cut off, and the server it names is what the person needs to see.
+    const problem = overview?.error ?? state.canvasError
+    const whyLine = state.detectionWhy
+    const linesOf = (text: string | null | undefined) => (text ? Math.ceil((text.length + 2) / columns) : 0)
+    const rows = Math.max(6, bodyRows - 2 - linesOf(problem) - linesOf(whyLine) - linesOf(state.canvasNote))
     const width = frame?.width ?? 1600
     const height = frame?.height ?? 900
 
@@ -859,10 +1402,15 @@ export const register: Register = on => {
               </Box>
             )
           })()
-        : <Text dimColor>{overview?.error ? `⚠ ${overview.error}` : 'Loading the canvas…'}</Text>
+        : problem ? null : <Text dimColor>Loading the canvas…</Text>
+    const tunnel = state.tunnels.find(t => t.isRunning && t.projectId === projectId)
+    const hasIndex = (state.detection?.projects.length ?? 0) > 1
     return (
       <Box flexDirection="column">
         {header}
+        {problem ? <Text color="red" wrap="wrap">⚠ {problem}</Text> : null}
+        {whyLine ? <Text color="yellow" wrap="wrap">{whyLine}</Text> : null}
+        {state.canvasNote ? <Text dimColor wrap="wrap">{state.canvasNote}</Text> : null}
         {picture}
         <Box flexDirection="row" gap={1} height={1} overflow="hidden">
           <Button key="zoomOut" label="−" onPress={() => moveCamera($, { op: 'zoom', factor: 0.8 })} />
@@ -870,10 +1418,10 @@ export const register: Register = on => {
           <Button key="zoomIn" label="+" onPress={() => moveCamera($, { op: 'zoom', factor: 1.25 })} />
           <Button key="fit" label="Fit" onPress={() => moveCamera($, { op: 'fit' })} />
           <Button key="open" label="Open in browser" onPress={() => openUrl($, canvasPage(projectId))} />
+          {hasIndex ? <Button key="projects" label="Projects" onPress={() => act($, null, () => showFolder($, 'index'))} /> : null}
+          {tunnel ? <Button key="stopTunnel" label="Stop tunnel" onPress={() => act($, null, () => stopTunnel($, tunnel.key))} /> : null}
           <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
-          {overview?.error && frame && frame.generation > 0
-            ? <Text color="red" wrap="truncate-end">⚠ {overview.error}</Text>
-            : <Text dimColor wrap="truncate-end">scroll to zoom · drag to pan · ▶ or a tile's timeline to play · double-click a tile · click the minimap to jump</Text>}
+          <Text dimColor wrap="truncate-end">{tunnel ? `${tunnel.text} ` : ''}scroll to zoom · drag to pan · ▶ or a tile's timeline to play · double-click a tile · click the minimap to jump</Text>
         </Box>
       </Box>
     )
@@ -881,7 +1429,7 @@ export const register: Register = on => {
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const closed = await next(e)
-    await hideCanvas($)
+    await leaveCanvas($)
     return closed
   })
 }

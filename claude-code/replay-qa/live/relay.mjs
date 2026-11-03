@@ -8,9 +8,13 @@
 //   automatically, so every live journey streams in parallel.
 // - Serves player.html (one recording) and canvas.html (every journey of a project as a grid of
 //   rrweb players), and screencasts either to a PNG the terminal shows with an <Image>.
+// - Holds what the session's folder is about (`replayqa detect`, told by the hooks module) for the
+//   browser view of it, and runs the `replayqa run` tunnels the person starts from it.
+// - Holds the Replay QA MCP sign-in in memory: a credential the hooks module minted is exchanged here, its
+//   token refreshed for as long as the session lasts, and each process it runs gets a credential minted on it.
 //
 // Zero dependencies: Node >= 22 (global fetch + WebSocket).
-// Prints one JSON line on stdout once listening: { port, token, dataDir }.
+// Prints one JSON line on stdout once listening: { port, token, dataDir, hookToken }.
 
 import http from 'node:http'
 import fs from 'node:fs'
@@ -18,9 +22,11 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
-import { execFile, spawn } from 'node:child_process'
+import net from 'node:net'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { decodeCredential, exchangeCredential, mintWithToken, refreshSession } from './mcp-auth.mjs'
 import { AuthError, NotFoundError, apiBaseOf, tunnelServers } from './qa-stream.mjs'
 
 /** live/: this script, the pages and vendor/. */
@@ -30,6 +36,8 @@ const REC_DIR = path.join(DATA_DIR, 'recordings')
 const FRAME_DIR = path.join(DATA_DIR, 'frames')
 const THUMB_DIR = path.join(DATA_DIR, 'thumbs')
 const TOKEN = process.env.REPLAY_QA_LIVE_TOKEN || crypto.randomUUID()
+/** What only the hooks module may do (a credential, starting a tunnel) takes this, in a header: pages have `TOKEN` in their URL. */
+const HOOK_TOKEN = crypto.randomUUID()
 const SERVERS_FILE = path.join(DATA_DIR, 'servers.json')
 const PLAYER_W = 1280
 const PLAYER_H = 800
@@ -48,6 +56,8 @@ const MAX_RESIDENT = 8
 for (const dir of [REC_DIR, FRAME_DIR, THUMB_DIR]) fs.mkdirSync(dir, { recursive: true })
 
 const log = (...args) => process.stderr.write(`[replay-qa-live relay] ${args.join(' ')}\n`)
+/** A QA token or credential in a line of output never leaves the relay. */
+const scrub = text => String(text).replace(/\b(mcl|mcp|mcr|lqa)_[A-Za-z0-9._~+/=-]{4,}/g, '$1_***')
 const safeId = id => String(id).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -94,7 +104,24 @@ async function apiBaseFor(projectId) {
   return projectServers.get(projectId) ?? (await runningTunnels()).get(projectId) ?? DEFAULT_API_BASE
 }
 
-function authToken() {
+/**
+ * How a QA server is named to a person: its host, and, for a PR's preview, what that means. A preview
+ * goes away with its PR, and a project made there stays mapped to it in servers.json.
+ */
+function serverNote(apiBase) {
+  const host = new URL(apiBase).host
+  const pr = /^(?:pr|deploy-preview)-(\d+)--/.exec(host)?.[1]
+  return { host, previewNote: pr ? ` That server is the preview of PR #${pr}, which may have been merged or closed.` : '' }
+}
+
+/**
+ * What always works, whatever the MCP server can do: a sign-in through it reaches the relay only where it
+ * offers `create_cli_credential`, so saying /mcp here would leave someone already signed in there stuck.
+ */
+const HOW_TO_SIGN_IN = 'run `npx --yes replayqa@0.6.0 login`, or set REPLAY_QA_API_KEY'
+
+/** The existing sign-ins: REPLAY_QA_API_KEY and its older names, then `replayqa login` (or `replayio login`, the same cache). */
+function existingToken() {
   const env = process.env.REPLAY_QA_API_KEY || process.env.REPLAY_API_KEY || process.env.REPLAY_ACCESS_TOKEN
   if (env && env.trim()) return env.trim()
   try {
@@ -107,7 +134,61 @@ function authToken() {
     const token = find(profile)
     if (token) return token
   } catch {}
-  throw new AuthError('No Replay QA token: run `replayio login`, or set REPLAY_QA_API_KEY')
+  throw new AuthError(`No Replay QA sign-in: ${HOW_TO_SIGN_IN}`)
+}
+
+/**
+ * QA server origin -> what the Replay QA MCP sign-in gave for it: tokens, in memory only, never logged.
+ * A token goes to the server that issued it and no other.
+ */
+const mcpSessions = new Map()
+const REFRESH_MARGIN_MS = 2 * 60_000
+
+/** Exchanges a credential the hooks module minted; it is single-use, so the session it gives is kept. */
+async function adoptCredential(credential) {
+  const session = await exchangeCredential(credential)
+  mcpSessions.set(session.origin, { ...session, refreshing: null })
+  return session
+}
+
+/** The MCP sign-in's access token for a server, refreshed as it nears its end; null when it has none. */
+async function mcpToken(origin, { force = false } = {}) {
+  const session = mcpSessions.get(origin)
+  if (!session) return null
+  if (!force && Date.now() < session.expiresAt - REFRESH_MARGIN_MS) return session.accessToken
+  // One at a time: refresh tokens rotate, so a second use of the same one would be refused.
+  session.refreshing ??= refreshSession(session)
+    .then(fresh => { Object.assign(session, fresh) })
+    .catch(err => {
+      log(`the MCP token could not be refreshed (${err.status ?? 'no answer'})`)
+      if (err.status >= 400 && err.status < 500) mcpSessions.delete(origin)
+    })
+    .finally(() => { session.refreshing = null })
+  await session.refreshing
+  return mcpSessions.has(origin) && Date.now() < session.expiresAt ? session.accessToken : null
+}
+
+/** A single-use credential for one process, on the relay's own MCP sign-in; null with none, or from a server that gives none. */
+async function mintCredential() {
+  const session = [...mcpSessions.values()].at(-1)
+  if (!session) return null
+  const { origin } = session
+  try {
+    const token = await mcpToken(origin)
+    return token && (await mintWithToken(origin, token))
+  } catch (err) {
+    if (err.status !== 401) {
+      log(`a credential could not be minted (${err.status ?? 'no answer'})`)
+      return null
+    }
+    const fresh = await mcpToken(origin, { force: true })
+    return fresh ? mintWithToken(origin, fresh).catch(() => null) : null
+  }
+}
+
+/** The token for a server: the MCP sign-in when there is one for it, else the existing sign-ins. */
+async function authToken(apiBase) {
+  return (await mcpToken(new URL(apiBase).origin)) ?? existingToken()
 }
 
 let inFlight = 0
@@ -128,12 +209,18 @@ async function request(apiPath, { method = 'GET', body } = {}) {
   const apiBase = await apiBaseFor(projectId && decodeURIComponent(projectId))
   await slot()
   try {
-    const res = await fetch(`${apiBase}${apiPath}`, {
+    const send = async token => fetch(`${apiBase}${apiPath}`, {
       method,
-      headers: { authorization: `Bearer ${authToken()}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(60_000),
     })
+    let res = await send(await authToken(apiBase))
+    // A token the server has stopped taking gets one fresh try before the existing sign-ins answer for it.
+    const origin = new URL(apiBase).origin
+    if (res.status === 401 && mcpSessions.has(origin)) {
+      res = await send((await mcpToken(origin, { force: true })) ?? existingToken())
+    }
     const text = await res.text()
     let data
     try { data = text ? JSON.parse(text) : {} } catch { data = text }
@@ -445,6 +532,10 @@ async function refreshProject(projectId, { maxAge = 0 } = {}) {
   if (state.refreshing) return state.refreshing
   if (maxAge && Date.now() - state.updatedAt < maxAge) return state
   state.refreshing = (async () => {
+    const apiBase = await apiBaseFor(projectId)
+    const { host, previewNote } = serverNote(apiBase)
+    // Known before anything can fail: what the person needs to see is which server it was.
+    state.server = apiBase
     try {
       const enc = encodeURIComponent(projectId)
       const [project, journeys, runs, explorations, running, queued] = await Promise.all([
@@ -456,12 +547,11 @@ async function refreshProject(projectId, { maxAge = 0 } = {}) {
         request(`/projects/${enc}/tasks?status=queued&page=1&page_size=50`),
       ])
       for (const r of [project, journeys, runs]) {
-        if (r.status === 401 || r.status === 403) throw new AuthError(`Replay QA answered ${r.status}: run \`replayio login\``)
-        if (r.status === 404) throw new NotFoundError(`No Replay QA project ${projectId} on ${new URL(await apiBaseFor(projectId)).host}: for a PR preview or staging, open the canvas with its dashboard URL`)
-        if (r.status !== 200) throw new Error(`Replay QA answered ${r.status} for project ${projectId}`)
+        if (r.status === 401 || r.status === 403) throw new AuthError(`Replay QA on ${host} answered ${r.status} for project ${projectId}: ${HOW_TO_SIGN_IN}.${previewNote}`)
+        if (r.status === 404) throw new NotFoundError(`No Replay QA project ${projectId} on ${host}: for a PR preview or staging, open the canvas with its dashboard URL.${previewNote}`)
+        if (r.status !== 200) throw new Error(`Replay QA on ${host} answered ${r.status} for project ${projectId}.${previewNote}`)
       }
       const p = project.data
-      state.server = await apiBaseFor(projectId)
       state.project = { id: p.id, name: p.name, target_url: p.target_url, status: p.status }
       state.journeys = itemsOf(journeys.data)
       state.runs = itemsOf(runs.data)
@@ -470,7 +560,9 @@ async function refreshProject(projectId, { maxAge = 0 } = {}) {
       state.error = null
       state.updatedAt = Date.now()
     } catch (err) {
-      state.error = err.message
+      state.error = err instanceof AuthError || err instanceof NotFoundError || /Replay QA on /.test(err.message)
+        ? err.message
+        : `Could not reach Replay QA on ${host} for project ${projectId}: ${err.message}.${previewNote}`
       state.updatedAt = Date.now()
     } finally {
       state.refreshing = null
@@ -619,9 +711,20 @@ async function watch({ projectId, kind, sourceId, title, goal }) {
 }
 
 /** The pinned CLI that reads recordings. A release cannot change this plugin's stream by itself. */
-const REPLAYQA = process.env.REPLAY_QA_CLI?.split(' ').filter(Boolean) ?? ['npx', '--yes', 'replayqa@0.4.0']
+const REPLAYQA = process.env.REPLAY_QA_CLI?.split(' ').filter(Boolean) ?? ['npx', '--yes', 'replayqa@0.6.0']
 /** Readers running now, so none outlives the relay. */
 const readers = new Set()
+/** A reader refused sooner than this was not refused because its token ran out. */
+const READER_MIN_LIFE_MS = Number(process.env.REPLAY_QA_READER_MIN_LIFE_MS ?? 60_000)
+
+/** A reader started again reads from the top: each task's rows already applied are skipped by their sequence number. */
+function isNewRow(rec, row) {
+  if (typeof row.seq !== 'number' || typeof row.task_id !== 'string') return true
+  rec.lastSeq ??= new Map()
+  if (row.seq <= (rec.lastSeq.get(row.task_id) ?? -1)) return false
+  rec.lastSeq.set(row.task_id, row.seq)
+  return true
+}
 
 /**
  * Runs `replayqa recording-events` for a recording, applying each batch of rows as it arrives.
@@ -629,9 +732,14 @@ const readers = new Set()
  */
 async function readRows(rec, flags) {
   const [command, ...args] = REPLAYQA
+  const apiBase = await apiBaseFor(rec.projectId)
+  // The pinned CLI takes a token as it is, so a reader runs on the MCP sign-in's current one when there
+  // is one for its server, and on the existing sign-ins when there is not. readLoop starts it again if
+  // the token runs out under it.
+  const signIn = await mcpToken(new URL(apiBase).origin)
   const child = spawn(command, [
     ...args, 'recording-events', '--project-id', rec.projectId, `--${SOURCE_FLAG[rec.kind]}`, rec.sourceId, '--ignore-config', ...flags,
-  ], { stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, REPLAY_QA_API_BASE: await apiBaseFor(rec.projectId) } })
+  ], { stdio: ['pipe', 'pipe', 'pipe'], detached: true, env: { ...process.env, REPLAY_QA_API_BASE: apiBase, ...(signIn ? { REPLAY_QA_API_KEY: signIn } : {}) } })
   const stop = () => {
     // npx runs the CLI as its own child: signal the group. Closing stdin ends it even if this never runs.
     try { process.kill(-child.pid, 'SIGTERM') } catch {}
@@ -649,7 +757,7 @@ async function readRows(rec, flags) {
     for (const line of lines) {
       try {
         const row = JSON.parse(line)
-        if (row.kind === 'rrweb' || row.kind === 'note') rows.push(row)
+        if ((row.kind === 'rrweb' || row.kind === 'note') && isNewRow(rec, row)) rows.push(row)
       } catch {}
     }
     if (rows.length === 0) return
@@ -676,15 +784,26 @@ async function readLoop(rec) {
     if (sourceIsLive(rec.projectId, rec.kind, rec.sourceId)) {
       rec.status = 'live'
       bump(rec.id)
-      const reader = await readRows(rec, ['--forever', '--interval-ms', String(LIVE_POLL_MS)])
+      let reader = await readRows(rec, ['--forever', '--interval-ms', String(LIVE_POLL_MS)])
+      let startedAt = Date.now()
       let failed = null
       reader.done.catch(err => { failed = err })
-      while (!failed) {
+      for (;;) {
         await sleep(LIVE_POLL_MS)
+        if (failed) {
+          // An MCP token lasts an hour and the reader holds one: a reader that ran a while gets a fresh one.
+          const origin = new URL(await apiBaseFor(rec.projectId)).origin
+          const canRenew = failed instanceof AuthError && Date.now() - startedAt > READER_MIN_LIFE_MS && (await mcpToken(origin, { force: true }))
+          if (!canRenew) throw failed
+          failed = null
+          reader = await readRows(rec, ['--forever', '--interval-ms', String(LIVE_POLL_MS)])
+          startedAt = Date.now()
+          reader.done.catch(err => { failed = err })
+          continue
+        }
         await refreshProject(rec.projectId, { maxAge: PROJECT_MAX_AGE_MS }).catch(() => {})
         if (!sourceIsLive(rec.projectId, rec.kind, rec.sourceId)) break
       }
-      if (failed) throw failed
       // Rows can land just after the status flips: the reader gets a poll or two more.
       await sleep(LIVE_POLL_MS + 1_500)
       reader.stop()
@@ -991,6 +1110,234 @@ function framesSnapshot() {
   return { version, frames: out }
 }
 
+// ------------------------------------------------------------------- the folder
+// What the session's folder is about, as `replayqa detect` said: the hooks module tells it, the browser
+// view reads it. A press in the browser view is queued for the hooks module, which alone can mint a credential.
+
+/** { view: 'index'|'setup', folder: the detection, or null when it did not run, why: why not, error: what a press last ran into, signIn: how the person is signed in, in words } */
+let folderState = { view: null, folder: null, why: null, error: null, signIn: null }
+const folderActions = []
+/** project id -> { name, status, error, at }: enough to name a project in the index. */
+const summaries = new Map()
+const SUMMARY_MAX_AGE_MS = 30_000
+
+async function summarize(entry) {
+  const known = summaries.get(entry.project_id)
+  if (known && Date.now() - known.at < SUMMARY_MAX_AGE_MS) return
+  // A project on a server only its repo's config names is read when it is opened, not to list it.
+  if (entry.qa_url && !projectServers.has(entry.project_id)) return
+  summaries.set(entry.project_id, { ...known, at: Date.now() })
+  const apiBase = await apiBaseFor(entry.project_id)
+  const { host, previewNote } = serverNote(apiBase)
+  try {
+    const { status, data } = await request(`/projects/${encodeURIComponent(entry.project_id)}`)
+    summaries.set(entry.project_id, status === 200
+      ? { name: data.name ?? null, status: data.status ?? null, error: null, server: apiBase === DEFAULT_API_BASE ? null : host, at: Date.now() }
+      : { name: known?.name ?? null, status: null, error: `Replay QA on ${host} answered ${status}.${previewNote}`, server: apiBase === DEFAULT_API_BASE ? null : host, at: Date.now() })
+  } catch (err) {
+    summaries.set(entry.project_id, { name: known?.name ?? null, status: null, error: err instanceof AuthError ? err.message : `Could not reach Replay QA on ${host}.${previewNote}`, server: apiBase === DEFAULT_API_BASE ? null : host, at: Date.now() })
+  }
+}
+
+function authStatus() {
+  let existing = false
+  try { existing = Boolean(existingToken()) } catch {}
+  return {
+    mcp: [...mcpSessions.values()].filter(s => Date.now() < s.expiresAt).map(s => ({ origin: s.origin, expiresAt: s.expiresAt })),
+    existing,
+  }
+}
+
+const isPortOpen = port => new Promise(resolve => {
+  const socket = net.createConnection({ host: 'localhost', port })
+  const finish = open => { socket.destroy(); resolve(open) }
+  socket.setTimeout(800)
+  socket.once('connect', () => finish(true))
+  socket.once('error', () => finish(false))
+  socket.once('timeout', () => finish(false))
+})
+
+// -------------------------------------------------------------------- tunnels
+// `replayqa run` starts the app and its tunnel as one process, which has to stay up for the whole test.
+// It runs here because the relay outlives any press and already exits when Claude Code goes away, taking
+// its process groups with it. A credential reaches it in the environment, never in its arguments.
+
+/** key (the app's path) -> the run */
+const tunnelRuns = new Map()
+
+const TUNNEL_TEXT = {
+  preparing: 'Starting replayqa…',
+  'starting-app': 'Starting the app…',
+  'app-ready': 'The app answered. Setting up the project…',
+  connecting: 'Connecting the tunnel…',
+  waiting: 'Waiting for the tunnel…',
+  ready: 'Tunnel ready: Replay QA can reach the app.',
+  stopping: 'Stopping…',
+  stopped: 'Stopped.',
+  failed: 'It stopped with an error.',
+}
+
+function describeTunnel(t) {
+  return {
+    key: t.key, label: t.label, targetUrl: t.targetUrl, status: t.status, text: t.waitingText ?? TUNNEL_TEXT[t.status],
+    isRunning: !t.exitedAt, projectId: t.projectId, qaUrl: t.qaUrl, error: t.error, note: t.note, tail: t.tail.slice(-4),
+    startedAt: t.startedAt, exitedAt: t.exitedAt,
+  }
+}
+const listTunnels = () => [...tunnelRuns.values()].map(describeTunnel)
+
+function setTunnel(t, fields) {
+  Object.assign(t, { waitingText: null }, fields)
+  bump()
+}
+
+/** One line of `replayqa run --json`: an event of its own, a line of its own, or the app's output. */
+function readTunnelLine(t, raw) {
+  const line = scrub(raw).trimEnd()
+  // replayqa prints a failure with its stack: the frames say nothing to a person.
+  if (!line || /^\s+at\s/.test(line)) return
+  const project = /(?:Created|Using) Replay QA project (proj[-_][\w-]+)/.exec(line)?.[1]
+  if (project) {
+    if (t.qaUrl) setProjectServer(project, t.qaUrl)
+    return setTunnel(t, { projectId: project, status: 'connecting' })
+  }
+  if (/^Starting local app:/.test(line)) return setTunnel(t, { status: 'starting-app' })
+  if (/^Local app is reachable at/.test(line)) return setTunnel(t, { status: 'app-ready' })
+  let event = null
+  if (line.startsWith('{')) {
+    try { event = JSON.parse(line) } catch {}
+  }
+  if (typeof event?.event !== 'string') {
+    t.tail.push(line.slice(0, 300))
+    if (t.tail.length > 40) t.tail.shift()
+    return
+  }
+  if (event.event === 'heartbeat') {
+    if (event.ready) return setTunnel(t, { status: 'ready', error: null })
+    return setTunnel(t, { status: 'waiting', waitingText: `Waiting: tunnel ${event.frpcConnected ? 'connected' : 'not connected'}, app ${event.targetReachable ? 'reachable' : 'not reachable'}.` })
+  }
+  if (event.event === 'heartbeat-error') return setTunnel(t, { error: scrub(event.error ?? 'A heartbeat failed.') })
+  if (event.event === 'host-blocked') return setTunnel(t, { note: `Blocked ${scrub(event.host)}: start it by hand with --allow ${scrub(event.host)} if the app needs this computer's network for it.` })
+  if (t.status !== 'ready' && ['starting', 'tunnel-status', 'dns-waiting', 'dns-ready', 'forward-proxy-listening', 'frpc-starting'].includes(event.event)) setTunnel(t, { status: 'connecting' })
+}
+
+/** What a failed run last said was wrong: its last error line, else its last line of any kind. */
+function failureOf(tail) {
+  const line = tail.findLast(text => /^(?:\w*Error:|error:|npm error)/.test(text)) ?? tail.at(-1)
+  return line?.replace(/^(?:\w*Error:|error:)\s*/, '') ?? null
+}
+
+function readLines(stream, onLine) {
+  let pending = ''
+  stream.setEncoding('utf8')
+  stream.on('data', chunk => {
+    pending += chunk
+    const lines = pending.split(/\r?\n/)
+    pending = lines.pop()
+    for (const line of lines) onLine(line)
+  })
+  stream.on('end', () => { if (pending) onLine(pending) })
+}
+
+async function runTunnel(t, { args, cwd, env }) {
+  const childEnv = { ...process.env, ...env }
+  for (const name of ['REPLAY_QA_LIVE_TOKEN', 'REPLAY_QA_LIVE_PORT', 'REPLAY_QA_LIVE_DIR']) delete childEnv[name]
+  const childArgs = [...args, '--json']
+  // One credential per process. replayqa takes it out of its environment at startup, so the app does not
+  // inherit it, exchanges it and refreshes in memory, so the tunnel outlives the hour-long token. With no
+  // MCP sign-in, replayqa uses its own: REPLAY_QA_API_KEY, then `replayqa login`.
+  const credential = await mintCredential()
+  if (credential) {
+    const { origin } = decodeCredential(credential)
+    childEnv.REPLAY_QA_API_KEY = credential
+    // The server that issued it, whatever the environment or a config in the folder names.
+    delete childEnv.REPLAY_QA_API_BASE
+    childEnv.REPLAY_QA_URL = origin
+    t.qaUrl = origin
+    childArgs.push('--qa-url', origin)
+  }
+  if (t.stopping) return setTunnel(t, { status: 'stopped', exitedAt: Date.now() })
+  const child = spawn(REPLAYQA[0], [...REPLAYQA.slice(1), ...childArgs], { cwd, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' })
+  t.child = child
+  readLines(child.stdout, line => readTunnelLine(t, line))
+  readLines(child.stderr, line => readTunnelLine(t, line))
+  child.once('error', err => { t.spawnError = err.message })
+  // What it left behind may hold its pipes: its exit is its end, a moment later at most.
+  child.once('exit', () => {
+    const release = setTimeout(() => { child.stdout.destroy(); child.stderr.destroy() }, 3_000)
+    release.unref()
+  })
+  child.once('close', code => {
+    for (const timer of t.killTimers) clearTimeout(timer)
+    const failed = !t.stopping && code !== 0
+    setTunnel(t, {
+      child: null,
+      exitedAt: Date.now(),
+      status: failed ? 'failed' : 'stopped',
+      error: failed ? (t.spawnError ?? failureOf(t.tail) ?? `replayqa exited with ${code}.`) : t.error,
+    })
+  })
+  bump()
+}
+
+function startTunnel({ key, label, args, cwd, env = {}, targetUrl }) {
+  const running = tunnelRuns.get(key)
+  if (running && !running.exitedAt) return running
+  const t = {
+    key, label: label ?? key, targetUrl: targetUrl ?? null, status: 'preparing', waitingText: null, projectId: null, qaUrl: null,
+    error: null, note: null, tail: [], startedAt: Date.now(), exitedAt: null, child: null, stopping: false, killTimers: [], spawnError: null,
+  }
+  tunnelRuns.set(key, t)
+  runTunnel(t, { args, cwd, env }).catch(err => {
+    setTunnel(t, { status: 'failed', error: scrub(err.message), exitedAt: Date.now() })
+  })
+  bump()
+  return t
+}
+
+/**
+ * A run's processes, the root last. replayqa starts the app in a process group of its own and stops it
+ * itself only once the tunnel is up; a signal before then would leave the app running on its port, and
+ * holding the pipes of a run that has otherwise ended.
+ */
+function processTree(rootPid) {
+  const children = new Map()
+  try {
+    for (const line of execFileSync('ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8', timeout: 3_000 }).split('\n')) {
+      const [pid, ppid] = line.trim().split(/\s+/).map(Number)
+      if (pid && ppid) children.set(ppid, [...(children.get(ppid) ?? []), pid])
+    }
+  } catch {}
+  const tree = []
+  const visit = pid => {
+    for (const child of children.get(pid) ?? []) visit(child)
+    tree.push(pid)
+  }
+  visit(rootPid)
+  return tree
+}
+
+function signalAll(pids, signal) {
+  for (const pid of pids) {
+    try { process.kill(pid, signal) } catch {}
+  }
+}
+
+/** Asks a run to stop: replayqa first, as it stops what it started; after a moment whatever is left, by name. */
+function stopTunnel(t) {
+  if (t.exitedAt) return
+  t.stopping = true
+  if (!t.child?.pid) return bump()
+  setTunnel(t, { status: 'stopping' })
+  const family = processTree(t.child.pid)
+  signalAll([process.platform === 'win32' ? t.child.pid : -t.child.pid], 'SIGTERM')
+  t.killTimers = [
+    setTimeout(() => signalAll(family, 'SIGTERM'), 3_000),
+    setTimeout(() => signalAll(family, 'SIGKILL'), 12_000),
+  ]
+  for (const timer of t.killTimers) timer.unref()
+}
+
 // --------------------------------------------------------------------- http
 
 function send(res, status, body, type = 'application/json') {
@@ -1019,6 +1366,79 @@ const server = http.createServer(async (req, res) => {
 
     const token = url.searchParams.get('token') ?? req.headers['x-replay-qa-live-token']
     if (token !== TOKEN) return send(res, 403, { error: 'bad token' })
+
+    // What only the hooks module may do.
+    const isHookRoute = (parts[0] === 'auth' && (parts[1] === 'credential' || parts[1] === 'mint'))
+      || (parts[0] === 'tunnels' && req.method === 'POST')
+      || (parts[0] === 'qa' && parts[1] === 'folder' && !parts[2] && req.method === 'POST')
+    if (isHookRoute && req.headers['x-replay-qa-hook-token'] !== HOOK_TOKEN) return send(res, 403, { error: 'bad token' })
+
+    // POST /auth/credential { credential } -> exchanges it and keeps the tokens in memory; answers no secret
+    if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'credential') {
+      const { credential } = await readJson(req)
+      try {
+        const session = await adoptCredential(credential)
+        return send(res, 200, { origin: session.origin, expiresAt: session.expiresAt })
+      } catch (err) {
+        return send(res, 400, { error: scrub(err.message) })
+      }
+    }
+
+    // POST /auth/mint -> a single-use credential for one process the hooks module runs; null with no MCP sign-in
+    if (req.method === 'POST' && parts[0] === 'auth' && parts[1] === 'mint') {
+      const credential = await mintCredential()
+      return send(res, 200, { credential: credential ?? null, qaUrl: credential ? decodeCredential(credential).origin : null })
+    }
+
+    // GET /auth/status -> which sign-ins there are; never a token
+    if (req.method === 'GET' && parts[0] === 'auth' && parts[1] === 'status') return send(res, 200, authStatus())
+
+    // POST /qa/folder { view, folder, why, error, signIn } -> what `replayqa detect` said about the session's folder
+    if (req.method === 'POST' && parts[0] === 'qa' && parts[1] === 'folder' && !parts[2]) {
+      const { view = null, folder = null, why = null, error = null, signIn = null } = await readJson(req)
+      folderState = { view, folder, why, error, signIn }
+      return send(res, 200, { ok: true })
+    }
+
+    // GET /qa/folder -> what the browser view of the folder draws
+    if (req.method === 'GET' && parts[0] === 'qa' && parts[1] === 'folder' && !parts[2]) {
+      for (const entry of folderState.folder?.projects ?? []) void summarize(entry).catch(err => log('summary failed', err.message))
+      return send(res, 200, { ...folderState, summaries: Object.fromEntries(summaries), tunnels: listTunnels(), auth: authStatus() })
+    }
+
+    // POST /qa/folder/action { type, ... } -> a press in the browser view, for the hooks module to act on and check
+    if (req.method === 'POST' && parts[0] === 'qa' && parts[1] === 'folder' && parts[2] === 'action') {
+      const action = await readJson(req)
+      if (typeof action?.type !== 'string') return send(res, 400, { error: 'type required' })
+      folderActions.push(action)
+      bump()
+      return send(res, 200, { queued: true })
+    }
+
+    // GET /ports/:port -> whether something already listens there
+    if (req.method === 'GET' && parts[0] === 'ports' && /^\d{2,5}$/.test(parts[1] ?? '')) {
+      return send(res, 200, { port: Number(parts[1]), isOpen: await isPortOpen(Number(parts[1])) })
+    }
+
+    // POST /tunnels { key, label, args, cwd, env?, targetUrl? } -> starts `replayqa run`, once per key
+    if (req.method === 'POST' && parts[0] === 'tunnels' && !parts[1]) {
+      const spec = await readJson(req)
+      if (!spec.key || !Array.isArray(spec.args) || !spec.cwd) return send(res, 400, { error: 'key, args and cwd required' })
+      return send(res, 200, describeTunnel(startTunnel(spec)))
+    }
+
+    // POST /tunnels/:key/stop -> stops one and what it started
+    if (req.method === 'POST' && parts[0] === 'tunnels' && parts[1] && parts[2] === 'stop') {
+      const t = tunnelRuns.get(parts[1])
+      if (!t) return send(res, 404, { error: 'no such tunnel' })
+      stopTunnel(t)
+      return send(res, 200, describeTunnel(t))
+    }
+
+    // GET /tunnels -> every run this session started
+    if (req.method === 'GET' && parts[0] === 'tunnels' && !parts[1]) return send(res, 200, listTunnels())
+
+    if (req.method === 'GET' && parts[0] === 'folder' && !parts[1]) return send(res, 200, page('folder.html'), 'text/html; charset=utf-8')
 
     if (req.method === 'GET' && parts[0] === 'health') return send(res, 200, { ok: true, followed: [...followed], recordings: recordings.size, apiBase: DEFAULT_API_BASE })
 
@@ -1156,7 +1576,8 @@ const server = http.createServer(async (req, res) => {
           req.on('close', wake)
         })
       }
-      return send(res, 200, framesSnapshot())
+      // The tunnels and the browser view's presses ride along: the hooks module is what follows this feed.
+      return send(res, 200, { ...framesSnapshot(), tunnels: listTunnels(), actions: folderActions.splice(0) })
     }
 
     send(res, 404, { error: 'not found' })
@@ -1171,12 +1592,16 @@ function playerUrl(id) { return `${base()}/player/${encodeURIComponent(id)}?mode
 function canvasUrl(projectId) { return `${base()}/canvas/${encodeURIComponent(projectId)}?token=${TOKEN}` }
 
 server.listen(Number(process.env.REPLAY_QA_LIVE_PORT ?? 0), '127.0.0.1', () => {
-  process.stdout.write(JSON.stringify({ port: server.address().port, token: TOKEN, dataDir: DATA_DIR }) + '\n')
+  process.stdout.write(JSON.stringify({ port: server.address().port, token: TOKEN, dataDir: DATA_DIR, hookToken: HOOK_TOKEN }) + '\n')
 })
 
 const shutdown = () => {
   for (const stop of readers) stop()
   chrome.stop()
+  // A tunnel ends with the session, and what it started with it.
+  for (const t of tunnelRuns.values()) {
+    if (t.child?.pid && !t.exitedAt) signalAll(processTree(t.child.pid), 'SIGTERM')
+  }
   process.exit(0)
 }
 process.on('SIGTERM', shutdown)

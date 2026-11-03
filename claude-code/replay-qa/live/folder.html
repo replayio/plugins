@@ -1,0 +1,216 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Replay QA</title>
+<style>
+  :root { color-scheme: dark; --accent: #F02D5E; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #101014; color: #d8d8de; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid #23232b; }
+  h1 { margin: 0; font-size: 17px; }
+  .dim { color: #8a8a96; }
+  main { max-width: 1040px; padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 14px; }
+  .lead { margin: 0; line-height: 1.45; }
+  .why { padding: 8px 12px; border-radius: 6px; background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.35); color: #f3d98b; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 12px 14px; background: #17171d; border: 1px solid #23232b; border-radius: 8px; }
+  a.card { color: inherit; text-decoration: none; }
+  a.card:hover { border-color: #44444f; }
+  .card.is-live { border-color: rgba(240,45,94,.55); }
+  .title { color: #f1f1f4; font-weight: 600; overflow-wrap: anywhere; }
+  .path { font: 12px ui-monospace, Menlo, monospace; color: #9a9aa6; overflow-wrap: anywhere; }
+  .tag { font-size: 11px; font-weight: 500; color: #8a8a96; border: 1px solid #2f2f39; border-radius: 9px; padding: 0 6px; margin-left: 6px; }
+  .bad { color: #f87171; overflow-wrap: anywhere; }
+  .good { color: #4ade80; }
+  code { display: block; padding: 7px 9px; background: #0c0c10; border-radius: 5px; font: 12px ui-monospace, Menlo, monospace; color: #cfcfd6; overflow-wrap: anywhere; white-space: pre-wrap; user-select: all; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  button { background: #2a2a33; color: #ddd; border: 0; border-radius: 4px; padding: 5px 11px; cursor: pointer; font: inherit; font-size: 13px; }
+  button:hover { background: #363642; }
+  button.primary { background: var(--accent); color: #fff; }
+  input { flex: 1; min-width: 180px; background: #0c0c10; color: #e6e6ea; border: 1px solid #2f2f39; border-radius: 4px; padding: 5px 8px; font: 13px ui-monospace, Menlo, monospace; }
+  .section { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: #b8b8c2; }
+</style>
+</head>
+<body>
+<header><h1 id="name">Replay QA</h1><span class="dim" id="summary"></span></header>
+<main id="main"><p class="lead dim">Loading…</p></main>
+<script>
+(() => {
+  const token = new URLSearchParams(location.search).get('token')
+  const q = (extra = '') => `${extra ? extra + '&' : ''}token=${encodeURIComponent(token)}`
+  const post = (path, body) => fetch(`${path}?${q()}`, { method: 'POST', body: JSON.stringify(body) })
+  const main = document.getElementById('main')
+  /** What a press decided that the next poll must not redraw away: an app waiting to be confirmed, and text being typed. */
+  let confirming = null
+  const typed = { use: '', test: '' }
+  let last = null
+
+  const el = (tag, cls, content) => { const e = document.createElement(tag); if (cls) e.className = cls; if (content != null) e.textContent = content; return e }
+  const button = (label, onClick, cls) => { const b = el('button', cls, label); b.addEventListener('click', onClick); return b }
+
+  function projectCard(project, summary) {
+    const card = el('a', 'card')
+    card.href = `/canvas/${encodeURIComponent(project.project_id)}?${q()}`
+    card.dataset.project = project.project_id
+    // Opening is the person's say-so to read it from the server its config names.
+    card.addEventListener('click', async e => {
+      if (!project.qa_url) return
+      e.preventDefault()
+      await post('/qa/follow', { projectId: project.project_id, on: true, server: project.qa_url })
+      location.href = card.href
+    })
+    card.append(el('div', 'title', summary?.name || project.project_id), el('div', 'path', project.path === '.' ? 'this folder' : project.path))
+    if (summary?.name) card.append(el('div', 'path', project.project_id))
+    if (project.qa_url || summary?.server) card.append(el('div', 'dim', `on ${summary?.server ?? new URL(project.qa_url).host}`))
+    if (summary?.error) card.append(el('div', 'bad', `⚠ ${summary.error}`))
+    return card
+  }
+
+  function appCard(app, tunnels) {
+    const card = el('div', 'card')
+    const title = el('div', 'title', app.name)
+    if (app.kind === 'maybe') title.append(el('span', 'tag', 'unclear'))
+    if (/(?:^|\/)(?:examples?|demos?|samples?)(?:\/|$)/.test(app.path)) title.append(el('span', 'tag', 'example'))
+    card.append(title, el('div', 'path', app.path === '.' ? 'this folder' : app.path), el('div', 'dim', app.why))
+    const port = app.port ? `Port ${app.port}, from ${app.port_source}` : 'Port unknown'
+    const shared = app.port_shared_with?.length ? `, shared with ${app.port_shared_with.length} more` : ''
+    card.append(el('div', 'dim', `${port}${shared}`))
+    if (!app.setup) {
+      card.append(el('div', 'dim', 'No command to start it was found.'))
+      return card
+    }
+    card.append(el('code', '', app.setup.command))
+    const tunnel = tunnels.find(t => t.key === app.setup.cwd)
+    const row = el('div', 'row')
+    if (tunnel?.isRunning) {
+      card.append(el('div', tunnel.status === 'ready' ? 'good' : 'dim', tunnel.text))
+      if (tunnel.note) card.append(el('div', 'dim', tunnel.note))
+      if (tunnel.error) card.append(el('div', 'bad', `⚠ ${tunnel.error}`))
+      if (tunnel.projectId) {
+        const open = el('a', '', 'Open canvas')
+        open.href = `/canvas/${encodeURIComponent(tunnel.projectId)}?${q()}`
+        row.append(open)
+      }
+      row.append(button('Stop', () => post('/qa/folder/action', { type: 'stop', key: tunnel.key })))
+    } else if (confirming?.key === app.setup.cwd) {
+      card.append(el('div', '', `This runs the command above, creates a Replay QA project in ${app.setup.config_path}, and starts testing once the tunnel is up, which uses QA credits.`))
+      if (confirming.isBusy) card.append(el('div', 'bad', `Something is already listening on port ${app.port}.`))
+      if (confirming.isBusy) row.append(button('Use what is running', () => start(app, true), 'primary'))
+      row.append(button(confirming.isBusy ? 'Start anyway' : 'Start', () => start(app, false), confirming.isBusy ? '' : 'primary'))
+      row.append(button('Cancel', () => { confirming = null; draw() }))
+    } else {
+      if (tunnel?.error) {
+        card.append(el('div', 'bad', `⚠ ${tunnel.error}`))
+        for (const line of tunnel.tail) if (!line.includes(tunnel.error)) card.append(el('div', 'path', line))
+      }
+      row.append(button(tunnel ? 'Start again' : 'Start', () => askToStart(app), 'primary'))
+      row.append(button('Copy command', e => { navigator.clipboard?.writeText(app.setup.command); e.target.textContent = 'Copied' }))
+    }
+    card.append(row)
+    return card
+  }
+
+  async function askToStart(app) {
+    confirming = { key: app.setup.cwd, isBusy: false }
+    draw()
+    if (!app.port) return
+    const res = await fetch(`/ports/${app.port}?${q()}`).then(r => r.json()).catch(() => null)
+    if (confirming?.key === app.setup.cwd) confirming.isBusy = Boolean(res?.isOpen)
+    draw()
+  }
+  async function start(app, noApp) {
+    confirming = null
+    await post('/qa/folder/action', { type: 'start', key: app.setup.cwd, noApp })
+    draw()
+  }
+
+  function offerCard(kind, title, help, placeholder, onSubmit) {
+    const card = el('form', 'card')
+    card.append(el('div', 'title', title), el('div', 'dim', help))
+    const input = el('input')
+    input.placeholder = placeholder
+    input.value = typed[kind]
+    input.addEventListener('input', () => { typed[kind] = input.value })
+    const row = el('div', 'row')
+    row.append(input, el('button', '', kind === 'use' ? 'Use it' : 'Test it'))
+    card.append(row)
+    card.addEventListener('submit', e => {
+      e.preventDefault()
+      if (!typed[kind].trim()) return
+      onSubmit(typed[kind].trim())
+      typed[kind] = ''
+      draw()
+    })
+    return card
+  }
+
+  function signInLine(data) {
+    if (data.signIn) return data.signIn
+    if (data.auth?.mcp?.length) return 'Signed in through the replay-qa MCP server.'
+    return data.auth?.existing ? 'Using your existing Replay sign-in.' : 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.6.0 login.'
+  }
+
+  function draw() {
+    const data = last
+    if (!data) return
+    // Mid-typing, a redraw would take the field away: it waits for the next poll.
+    if (document.activeElement?.tagName === 'INPUT' && document.activeElement.value) return
+    const folder = data.folder
+    document.getElementById('name').textContent = folder?.name ?? 'Replay QA'
+    document.title = `Replay QA · ${folder?.name ?? 'this folder'}`
+    const nodes = [el('p', 'lead dim', signInLine(data))]
+    if (data.error) nodes.push(el('p', 'lead bad', `⚠ ${data.error}`))
+    const summary = document.getElementById('summary')
+    if (data.view === 'index' && folder) {
+      summary.textContent = `${folder.projects.length} Replay QA projects in this folder`
+      if (folder.truncated) nodes.push(el('p', 'lead dim', 'This folder is large, so the search for configs stopped early; there may be more.'))
+      const grid = el('div', 'grid')
+      for (const project of folder.projects) grid.append(projectCard(project, data.summaries[project.project_id]))
+      nodes.push(grid)
+    } else {
+      const apps = folder?.apps ?? []
+      const tools = folder?.workspace?.tools ?? []
+      const count = apps.length === 1 ? '1 app' : `${apps.length} apps`
+      summary.textContent = folder ? [tools.join(' + '), count, folder.libraries ? `${folder.libraries} libraries` : ''].filter(Boolean).join(' · ') : ''
+      if (data.why) nodes.push(el('p', 'lead why', data.why))
+      if (folder && !folder.projects.length) nodes.push(el('p', 'lead', 'This folder has no Replay QA project yet.'))
+      if (folder && apps.length) {
+        nodes.push(el('p', 'lead dim', 'These are suggestions from reading the files here, and nothing has been run. Check each command and port before starting one: ports are guesses, and apps collide on them.'))
+        const grid = el('div', 'grid')
+        for (const app of apps) grid.append(appCard(app, data.tunnels))
+        nodes.push(grid)
+      } else if (folder) {
+        nodes.push(el('p', 'lead', folder.mode === 'none'
+          ? 'Nothing was found here to test: no package.json, and no Replay QA config.'
+          : 'Nothing here looks like an app Replay QA could start: no package has a dev server.'))
+      } else {
+        nodes.push(el('p', 'lead', 'No .replay/config.json names a project for this folder.'))
+      }
+      nodes.push(el('div', 'section', 'Or'))
+      const offers = el('div', 'grid')
+      offers.append(
+        offerCard('use', 'Use an existing project', 'Writes qa-project-id to .replay/config.json for this folder. Nothing is created or run.', 'proj-… or a dashboard URL', value => post('/qa/folder/action', { type: 'use', value })),
+        offerCard('test', 'Test a public URL', 'Creates a Replay QA project for it. Testing starts at once and uses QA credits.', 'https://…', value => post('/qa/folder/action', { type: 'test', value })),
+      )
+      nodes.push(offers)
+    }
+    main.replaceChildren(...nodes)
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(`/qa/folder?${q()}`)
+      last = await res.json()
+      if (!res.ok) throw new Error(last.error || `The relay answered ${res.status}`)
+      draw()
+    } catch (err) {
+      main.replaceChildren(el('p', 'lead bad', `⚠ ${err.message}`))
+    }
+    setTimeout(refresh, 2000)
+  }
+  refresh()
+})()
+</script>
+</body>
+</html>

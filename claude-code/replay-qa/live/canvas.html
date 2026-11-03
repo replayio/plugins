@@ -35,6 +35,9 @@
   .live-count i, .dot.live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; margin-right: 6px; }
   .count { color: #8a8a96; }
   .count b { color: #d8d8de; font-weight: 600; }
+  #back { display: none; color: #8a8a96; font-size: 13px; text-decoration: none; }
+  #back:hover { color: #d8d8de; }
+  #back.on { display: inline; }
   .server { color: #8a8a96; font-size: 12px; padding: 2px 8px; border: 1px solid #2f2f39; border-radius: 10px; display: none; }
   .server.on { display: inline; }
   .spacer { flex: 1; }
@@ -95,6 +98,7 @@
 </head>
 <body>
 <header id="head">
+  <a id="back">← Projects</a>
   <span class="proj" id="proj">Replay QA</span>
   <span class="live-count" id="liveCount"><i></i><span id="liveN">0</span> live</span>
   <span class="server" id="server" title="The QA server this project is on"></span>
@@ -793,6 +797,13 @@
     }
     setTimeout(refresh, 3000)
   }
+
+  // Opened from the index of the folder's projects, this leads back to it.
+  fetch(`/qa/folder?${q()}`).then(r => r.json()).then(data => {
+    if ((data.folder?.projects?.length ?? 0) < 2) return
+    $('back').href = `/folder?${q()}`
+    $('back').classList.add('on')
+  }).catch(() => {})
 
   ;(async () => {
     if (following) await post('/qa/follow', { projectId, on: true }).catch(() => {})
