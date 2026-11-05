@@ -1,7 +1,7 @@
 {
   "name": "replay-qa",
-  "version": "0.14.2",
-  "description": "Use Replay QA from Claude Code through the replayqa CLI with skills and slash commands, and watch explorations and journey runs stream live: inline rrweb players in the conversation and a canvas of every journey.",
+  "version": "0.15.0",
+  "description": "Run Replay QA from Claude Code with inline recording players and an interactive project dashboard that supports clicks, typing, scrolling and resizing.",
   "author": {
     "name": "Replay",
     "url": "https://replay.io"
@@ -15,6 +15,6 @@
     "qa",
     "live-preview",
     "rrweb",
-    "canvas"
+    "dashboard"
   ]
 }

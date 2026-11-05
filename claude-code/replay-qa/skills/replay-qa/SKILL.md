@@ -112,14 +112,14 @@ This plugin also ships command files in the plugin `commands/` directory. Invoke
 | `/replay-qa:rerun-journeys` | Use supported journey retry alternatives. |
 | `/replay-qa:report-missing-bug` | Ask Replay QA to investigate a missed issue. |
 
-With function hooks enabled the plugin also adds `/replayqa` (no namespace). With no argument it follows the session's folder: one project opens its canvas, several draw an index to choose from, and none draw the list to set one up, with one action per app to start it and its tunnel. `/replayqa canvas [project]`, `/replayqa setup` (the list, even where a project is configured), `/replayqa use <project>`, `/replayqa test <url>`, `/replayqa start|stop <app path>`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`, `/replayqa status`.
+With function hooks enabled the plugin also adds `/replayqa` (no namespace). With no argument it follows the session's folder: one project opens its dashboard, several draw an index to choose from, and none draw the list to set one up, with one action per app to start it and its tunnel. `/replayqa canvas [project]`, `/replayqa setup` (the list, even where a project is configured), `/replayqa use <project>`, `/replayqa test <url>`, `/replayqa start|stop <app path>`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`, `/replayqa status`.
 
 ## Live Views
 
 When the Claude Code session has function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`), this plugin streams Replay QA work into the conversation. You do not run anything extra:
 
-- Starting an exploration (`start-exploration`), marking a bug fixed (`mark-bug … fixed`, which makes Replay QA re-test the journey), or reporting a missed bug (`report-missing-bug`) turns that call's result into a live rrweb player. The project is followed, so every exploration and journey run that is executing streams in parallel, and finished runs can be opened from the canvas.
-- `/replayqa` opens a canvas of every journey in the folder's project: running ones stream live, finished ones load on click. It never opens a project seen in another folder. `/replayqa live` lists what is streaming, and `/replayqa open` opens a player in the browser.
+- Starting an exploration (`start-exploration`), marking a bug fixed (`mark-bug … fixed`, which makes Replay QA re-test the journey), or reporting a missed bug (`report-missing-bug`) turns that call's result into a live rrweb player. The project is followed, so every exploration and journey run that is executing streams in parallel, and finished runs can be opened from the dashboard.
+- `/replayqa` opens the dashboard's `/p/<project>/overview` page. Click, type and scroll to use it; resizing the pane resizes the browser without navigating away. `/replayqa canvas` is a compatible alias. It never opens a project seen in another folder. `/replayqa live` lists what is streaming, and `/replayqa open` opens a player in the browser.
 - The streams are read with `replayqa recording-events` through a local relay; nothing is sent anywhere else.
 
 When you start an exploration for the user, say that the live player is in the result and mention `/replayqa canvas`. Do not poll the stream yourself: keep using `status` and `bugs` for state, and read the bug reports for findings.

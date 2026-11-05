@@ -144,36 +144,6 @@ test('reports a missing token and a missing project plainly', async t => {
   assert.match(res.data.error, /No Replay QA project nope/)
 })
 
-test('draws a finished run\'s last frame once, as the thumbnail the canvas shows', async t => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-relay-'))
-  const mock = await startMock({
-    projects: [{
-      id: 'proj-p1', name: 'Shop', journeys: [{ id: 'j1', name: 'Checkout' }],
-      runs: [{ id: 'run-a', journey_id: 'j1', status: 'completed', title: 'Checkout', events: synthEvents({ title: 'Checkout', steps: 8 }) }],
-    }],
-  })
-  const relay = await startRelay(mock.url, dataDir)
-  t.after(async () => { relay.stop(); await mock.close(); fs.rmSync(dataDir, { recursive: true, force: true }) })
-  const ask = () => relay.call('POST', '/qa/thumbnail', { projectId: 'proj-p1', kind: 'test_run', sourceId: 'run-a', title: 'Checkout' })
-  const first = await ask()
-  assert.equal(first.status, 200)
-  assert.equal(first.data.id, 'run-a')
-  const done = await until(async () => {
-    const r = await ask()
-    return r.data.status !== 'pending' && r
-  }, 60_000)
-  if (done.data.status === 'error' && /chrom|browser|executable/i.test(done.data.error ?? '')) return t.skip(`no renderer: ${done.data.error}`)
-  assert.equal(done.data.status, 'ready', done.data.error ?? '')
-  assert.ok(done.data.durationMs > 0, 'the recording\'s length comes with it')
-  const png = await fetch(`http://127.0.0.1:${relay.info.port}${done.data.url}?token=${relay.info.token}`)
-  assert.equal(png.headers.get('content-type'), 'image/png')
-  const bytes = Buffer.from(await png.arrayBuffer())
-  assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
-  // Asked again, it is the same file: nothing is read or drawn twice.
-  const reads = mock.calls.filter(c => c.includes('recording-events')).length
-  assert.equal((await ask()).data.status, 'ready')
-  assert.equal(mock.calls.filter(c => c.includes('recording-events')).length, reads)
-})
 
 // -------------------------------------------------------------- the MCP sign-in
 
@@ -599,4 +569,50 @@ test('a bad credential is refused without echoing it', async t => {
     assert.equal(err.message.includes('verifier-1'), false)
     return true
   })
+})
+
+test('dashboard browser loads /p/, forwards clicks and typing, and resizes without losing page state', async t => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-dashboard-'))
+  const observations = []
+  const site = http.createServer((req, res) => {
+    if (req.url.startsWith('/api/observed')) {
+      observations.push({ url: req.url, auth: req.headers.authorization })
+      res.end('{}')
+      return
+    }
+    res.setHeader('content-type', 'text/html')
+    res.end(`<style>html,body{margin:0}button{position:fixed;left:0;top:0;width:50vw;height:50vh}input{position:fixed;left:50vw;top:0;width:49vw;height:50vh}</style>
+      <div style="height:2000px"></div><button onclick="this.textContent=++window.clicks;report()">Click</button><input oninput="report()">
+      <script>window.clicks=0;function report(){fetch('/api/observed?'+new URLSearchParams({clicks:window.clicks,width:innerWidth,height:innerHeight,scroll:scrollY,text:document.querySelector('input').value}))}onresize=report;onscroll=report;report()</script>`)
+  })
+  await new Promise(resolve => site.listen(0, '127.0.0.1', resolve))
+  const origin = `http://127.0.0.1:${site.address().port}`
+  const relay = await startRelay(`${origin}/api/v1`, dataDir)
+  t.after(async () => { relay.stop(); await new Promise(resolve => site.close(resolve)); fs.rmSync(dataDir, { recursive: true, force: true }) })
+  const redirect = await fetch(`http://127.0.0.1:${relay.info.port}/canvas/proj-dashboard?token=${relay.info.token}`, { redirect: 'manual' })
+  assert.equal(redirect.headers.get('location'), `${origin}/p/proj-dashboard/overview`)
+  const view = await relay.call('POST', '/canvas/proj-dashboard/view', { width: 800, height: 600 })
+  assert.equal(view.status, 200, JSON.stringify(view.data))
+  await until(() => observations.length)
+  assert.equal(observations.at(-1).auth, 'Bearer test')
+  const input = body => relay.call('POST', '/canvas/proj-dashboard/input', body)
+  const click = { type: 'batch', stream: 'test', events: ['down', 'up'].map((event, i) => ({ seq: i + 1, input: { type: 'pointer', event, button: 'left', x: 0.25, y: 0.25 } })) }
+  await input(click)
+  await input(click) // Redelivered client history must not click twice.
+  await until(() => observations.some(o => new URL(o.url, origin).searchParams.get('clicks') === '1'))
+  await input({ type: 'pointer', event: 'down', button: 'left', x: 0.75, y: 0.25 })
+  await input({ type: 'pointer', event: 'up', button: 'left', x: 0.75, y: 0.25 })
+  await input({ type: 'key', key: 'x' })
+  await until(() => observations.some(o => new URL(o.url, origin).searchParams.get('text') === 'x'))
+  await input({ type: 'wheel', x: 0.75, y: 0.75, deltaY: 300 })
+  await until(() => observations.some(o => Number(new URL(o.url, origin).searchParams.get('scroll')) > 0))
+  assert.equal((await relay.call('POST', '/canvas/proj-dashboard/view', { width: 1000, height: 700 })).status, 200)
+  await until(() => observations.some(o => new URL(o.url, origin).searchParams.get('width') === '1000'))
+  const last = new URL(observations.at(-1).url, origin).searchParams
+  assert.equal(last.get('height'), '700')
+  assert.equal(last.get('clicks'), '1')
+  assert.equal(last.get('text'), 'x')
+  for (const event of ['down', 'up']) await input({ type: 'pointer', event, button: 'left', x: 0.25, y: 0.25 })
+  await until(() => observations.some(o => new URL(o.url, origin).searchParams.get('clicks') === '2'))
+  await relay.call('POST', '/canvas/proj-dashboard/view', { on: false })
 })

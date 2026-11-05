@@ -88,7 +88,7 @@
       if (tunnel.note) card.append(el('div', 'dim', tunnel.note))
       if (tunnel.error) card.append(el('div', 'bad', `⚠ ${tunnel.error}`))
       if (tunnel.projectId) {
-        const open = el('a', '', 'Open canvas')
+        const open = el('a', '', 'Open dashboard')
         open.href = `/canvas/${encodeURIComponent(tunnel.projectId)}?${q()}`
         row.append(open)
       }

@@ -138,7 +138,7 @@ function appBlock(ui: FolderUi, data: FolderData, on: FolderActions, app: Detect
           {tunnel.note ? <Text dimColor wrap="wrap">{tunnel.note}</Text> : null}
           {tunnel.error ? <Text color="red" wrap="wrap">⚠ {tunnel.error}</Text> : null}
           <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {tunnel.projectId ? <Button key={`canvas:${key}`} variant="primary" label="Open canvas" onPress={() => on.openTunnel(tunnel)} /> : null}
+            {tunnel.projectId ? <Button key={`canvas:${key}`} variant="primary" label="Open dashboard" onPress={() => on.openTunnel(tunnel)} /> : null}
             <Button key={`stop:${key}`} label="Stop" onPress={() => on.stop(tunnel)} />
           </Box>
         </Box>

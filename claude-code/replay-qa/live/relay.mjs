@@ -6,8 +6,7 @@
 //   rrweb events in memory and as NDJSON on disk.
 // - Follows a project: any exploration, test run or task that is running gets a recording
 //   automatically, so every live journey streams in parallel.
-// - Serves player.html (one recording) and canvas.html (every journey of a project as a grid of
-//   rrweb players), and screencasts either to a PNG the terminal shows with an <Image>.
+// - Shows the dashboard /p/ pages and inline recordings as browser screencasts.
 // - Holds what the session's folder is about (`replayqa detect`, told by the hooks module) for the
 //   browser view of it, and runs the `replayqa run` tunnels the person starts from it.
 // - Holds the Replay QA MCP sign-in in memory: a credential the hooks module minted is exchanged here, its
@@ -16,6 +15,7 @@
 // Zero dependencies: Node >= 22 (global fetch + WebSocket).
 // Prints one JSON line on stdout once listening: { port, token, dataDir, hookToken }.
 
+import { dispatchDashboardInput } from './dashboard-input.mjs'
 import http from 'node:http'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
@@ -34,7 +34,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.REPLAY_QA_LIVE_DIR || path.join(os.homedir(), '.claude', 'replay-qa-live')
 const REC_DIR = path.join(DATA_DIR, 'recordings')
 const FRAME_DIR = path.join(DATA_DIR, 'frames')
-const THUMB_DIR = path.join(DATA_DIR, 'thumbs')
 const TOKEN = process.env.REPLAY_QA_LIVE_TOKEN || crypto.randomUUID()
 /** What only the hooks module may do (a credential, starting a tunnel) takes this, in a header: pages have `TOKEN` in their URL. */
 const HOOK_TOKEN = crypto.randomUUID()
@@ -53,7 +52,7 @@ const MAX_API_CONCURRENCY = 4
 /** Recordings kept in memory with their events; older finished ones are re-read from disk. */
 const MAX_RESIDENT = 8
 
-for (const dir of [REC_DIR, FRAME_DIR, THUMB_DIR]) fs.mkdirSync(dir, { recursive: true })
+for (const dir of [REC_DIR, FRAME_DIR]) fs.mkdirSync(dir, { recursive: true })
 
 const log = (...args) => process.stderr.write(`[replay-qa-live relay] ${args.join(' ')}\n`)
 /** A QA token or credential in a line of output never leaves the relay. */
@@ -847,7 +846,24 @@ async function openTarget(url, width, height, onEvent) {
   await chrome.start()
   const { targetId } = await chrome.send('Target.createTarget', { url: 'about:blank' })
   const { sessionId } = await chrome.send('Target.attachToTarget', { targetId, flatten: true })
-  chrome.handlers.set(sessionId, onEvent)
+  const origin = new URL(url).origin
+  const dashboard = new URL(url).pathname.startsWith('/p/')
+  chrome.handlers.set(sessionId, (method, params) => {
+    if (dashboard && method === 'Fetch.requestPaused') {
+      void (async () => {
+        const request = new URL(params.request.url)
+        const token = request.origin === origin && request.pathname.startsWith('/api/')
+          ? await authToken(`${origin}/api/v1`) : null
+        const headers = Object.entries(params.request.headers).filter(([name]) => !token || name.toLowerCase() !== 'authorization')
+          .map(([name, value]) => ({ name, value: String(value) }))
+        if (token) headers.push({ name: 'Authorization', value: `Bearer ${token}` })
+        await chrome.send('Fetch.continueRequest', { requestId: params.requestId, headers }, sessionId)
+      })().catch(() => chrome.send('Fetch.failRequest', { requestId: params.requestId, errorReason: 'Failed' }, sessionId).catch(() => {}))
+      return
+    }
+    onEvent(method, params)
+  })
+  if (dashboard) await chrome.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId)
   await chrome.sendSettled('Page.enable', {}, sessionId)
   await chrome.sendSettled('Runtime.enable', {}, sessionId)
   await chrome.sendSettled('Runtime.addBinding', { name: '__playerEvent' }, sessionId)
@@ -959,7 +975,7 @@ async function startPlayer(id, mode, { t = 0, paused = false } = {}) {
 const canvasViewId = projectId => `canvas-${safeId(projectId)}`
 
 /**
- * Screencasts the canvas page: every journey of the project as rrweb players, as one picture.
+ * Screencasts the dashboard's embedded project page.
  * One already on screen is resized in place (the pane changed shape), its players kept.
  */
 async function startCanvasView(projectId, { width = CANVAS_W, height = CANVAS_H } = {}) {
@@ -977,91 +993,10 @@ async function startCanvasView(projectId, { width = CANVAS_W, height = CANVAS_H 
     bump(id)
     return
   }
-  const url = `${base()}/canvas/${encodeURIComponent(projectId)}?embed=1&token=${TOKEN}`
+  const url = await dashboardUrl(projectId)
   await startView(id, url, w, h, { kind: 'canvas', mode: 'canvas' })
 }
 
-// ---------------------------------------------------------------- thumbnails
-// The QA API keeps no screenshot of a run, so a finished recording's last frame is drawn once in the
-// renderer and kept as a PNG: the canvas shows it on tiles that are not playing. A finished recording
-// never changes, so neither does its thumbnail.
-
-const THUMB_W = 640
-const MAX_THUMB_JOBS = 2
-/** recording id -> its thumbnail job, while it runs or after it failed (with why). */
-const thumbJobs = new Map()
-const thumbQueue = []
-let thumbsRunning = 0
-const thumbFile = id => path.join(THUMB_DIR, `${safeId(id)}.png`)
-/** Beside each thumbnail, the recording's length: what the canvas's controls show before a player has it. */
-const thumbInfoFile = id => path.join(THUMB_DIR, `${safeId(id)}.json`)
-
-/** `ready` with the file (and the recording's length), `pending` while it is read and drawn, or `error` with why. */
-function thumbnailState(id) {
-  if (fs.existsSync(thumbFile(id))) {
-    let durationMs = null
-    try { durationMs = JSON.parse(fs.readFileSync(thumbInfoFile(id), 'utf8')).durationMs ?? null } catch {}
-    return { status: 'ready', durationMs }
-  }
-  const job = thumbJobs.get(id)
-  return job ? { status: job.error ? 'error' : 'pending', error: job.error ?? null } : null
-}
-
-/** Queues a thumbnail of a finished source; at most MAX_THUMB_JOBS read and draw at once. */
-function requestThumbnail(source) {
-  const id = recordingId(source.kind, source.sourceId)
-  const known = thumbnailState(id)
-  if (known && known.status !== 'error') return { id, ...known }
-  const job = { source, error: null }
-  thumbJobs.set(id, job)
-  thumbQueue.push(id)
-  pumpThumbnails()
-  return { id, status: 'pending', error: null }
-}
-
-function pumpThumbnails() {
-  while (thumbsRunning < MAX_THUMB_JOBS && thumbQueue.length) {
-    const id = thumbQueue.shift()
-    const job = thumbJobs.get(id)
-    if (!job) continue
-    thumbsRunning++
-    drawThumbnail(id, job.source)
-      .then(() => thumbJobs.delete(id))
-      .catch(err => { job.error = err.message; log('thumbnail failed', id, err.message) })
-      .finally(() => { thumbsRunning--; pumpThumbnails() })
-  }
-}
-
-async function drawThumbnail(id, source) {
-  const rec = await watch(source)
-  await loops.get(rec.id)
-  if (rec.status !== 'ended') throw new Error(rec.error || `the recording is ${rec.status}`)
-  if (rec.evicted) hydrate(rec)
-  const size = playerSize(rec)
-  const width = THUMB_W
-  const height = Math.round((THUMB_W * size.height) / size.width)
-  const url = `${base()}/player/${encodeURIComponent(rec.id)}?mode=replay&t=${durationOf(rec)}&paused=1&chrome=0&sub=0&token=${TOKEN}`
-  const target = await openTarget(url, width, height, () => {})
-  try {
-    let ready = false
-    for (let i = 0; i < 100 && !ready; i++) {
-      await sleep(150)
-      ready = await evaluate(target.sessionId, 'Boolean(window.__ready)').catch(() => false)
-    }
-    if (!ready) throw new Error('the recording did not draw')
-    // Two frames, so the paused moment is painted.
-    await evaluate(target.sessionId, 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))')
-    const { data } = await chrome.send('Page.captureScreenshot', { format: 'png' }, target.sessionId)
-    const tmp = `${thumbFile(id)}.${process.pid}.tmp`
-    await fsp.writeFile(tmp, Buffer.from(data, 'base64'))
-    await fsp.writeFile(thumbInfoFile(id), JSON.stringify({ durationMs: durationOf(rec) }))
-    await fsp.rename(tmp, thumbFile(id))
-  } finally {
-    await closeTarget(target)
-  }
-}
-
-/** Stops the view for `id`; with `only`, just when that one is still current. */
 async function stopPlayer(id, only) {
   const player = players.get(id)
   if (!player || (only && player !== only)) return
@@ -1522,24 +1457,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // POST /qa/thumbnail { projectId, kind, sourceId, title? } -> { id, status: ready|pending|error, url? }: the last
-    // frame of a finished source, drawn once; ask again while it is pending
-    if (req.method === 'POST' && parts[0] === 'qa' && parts[1] === 'thumbnail') {
-      const { projectId, kind, sourceId, title, goal } = await readJson(req)
-      if (!projectId || !SOURCE_KEY[kind] || !sourceId) return send(res, 400, { error: 'projectId, kind and sourceId required' })
-      const state = requestThumbnail({ projectId, kind, sourceId, title, goal })
-      return send(res, 200, { ...state, url: state.status === 'ready' ? `/thumbs/${encodeURIComponent(state.id)}.png` : null })
-    }
-
-    // GET /thumbs/:id.png -> a drawn thumbnail
-    if (req.method === 'GET' && parts[0] === 'thumbs' && parts[1]) {
-      const file = thumbFile(parts[1].replace(/\.png$/, ''))
-      if (!fs.existsSync(file)) return send(res, 404, { error: 'no thumbnail' })
-      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=31536000, immutable' })
-      return res.end(fs.readFileSync(file))
-    }
-
-    // POST /canvas/:project/view { on, width?, height? } -> screencast the canvas page for the terminal
+    // POST /canvas/:project/view { on, width?, height? } -> show or resize the dashboard
     if (req.method === 'POST' && parts[0] === 'canvas' && parts[1] && parts[2] === 'view') {
       const { on = true, width, height } = await readJson(req)
       const id = canvasViewId(parts[1])
@@ -1548,34 +1466,24 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, framesSnapshot().frames[id] ?? null)
     }
 
-    // POST /canvas/:project/camera { op: zoom|pan|focus|minimap|gesture|fit|actual|state, factor?, x?, y?, dx?, dy?,
-    // id?, sx?, sy?, done? } -> move the screencast canvas's camera; points and distances are fractions of the picture
-    // (of the minimap for `minimap`). A `gesture` is a pointer drag as it stands, which scrubs a tile's timeline,
-    // presses its buttons or pans. Answers { result: { k, minimap } }: the zoom, and where the minimap sits.
-    if (req.method === 'POST' && parts[0] === 'canvas' && parts[1] && parts[2] === 'camera') {
-      const player = players.get(canvasViewId(parts[1]))
-      if (!player?.sessionId) return send(res, 409, { error: 'the canvas is not on screen' })
-      const { op, factor, x, y, dx, dy, id: gestureId, sx, sy, done } = await readJson(req)
-      const n = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback)
-      const args = {
-        zoom: [n(factor, 0.1, 10, 1), n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
-        pan: [n(dx, -10, 10, 0), n(dy, -10, 10, 0)],
-        focus: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
-        minimap: [n(x, 0, 1, 0.5), n(y, 0, 1, 0.5)],
-        gesture: [Math.trunc(n(gestureId, 0, 1e9, 0)), n(sx, -2, 3, 0.5), n(sy, -2, 3, 0.5), n(x, -2, 3, 0.5), n(y, -2, 3, 0.5), done === true],
-        state: [],
-        fit: [],
-        actual: [],
-      }[op]
-      if (!args) return send(res, 400, { error: `unknown camera op ${op}` })
+    // Forward input to the real dashboard browser, using its current viewport.
+    if (req.method === 'POST' && parts[0] === 'canvas' && parts[1] && parts[2] === 'input') {
+      const id = canvasViewId(parts[1])
+      const player = players.get(id)
+      const frame = frames.get(id)
+      if (!player?.sessionId || !frame) return send(res, 409, { error: 'the dashboard is not on screen' })
+      const input = await readJson(req)
+      await dispatchDashboardInput((method, params) => chrome.send(method, params, player.sessionId), frame, input, player.inputStreams ??= new Map())
       player.touched = Date.now()
-      const result = await evaluate(player.sessionId, `window.__canvas ? window.__canvas.${op}(${args.map(a => JSON.stringify(a)).join(', ')}) : null`)
-      return send(res, 200, { result })
+      return send(res, 200, { ok: true })
     }
 
     // GET /player/:id and /canvas/:project -> the pages the screencast (or a person) loads
     if (req.method === 'GET' && parts[0] === 'player' && parts[1]) return send(res, 200, page('player.html'), 'text/html; charset=utf-8')
-    if (req.method === 'GET' && parts[0] === 'canvas' && parts[1]) return send(res, 200, page('canvas.html'), 'text/html; charset=utf-8')
+    if (req.method === 'GET' && parts[0] === 'canvas' && parts[1]) {
+      res.writeHead(302, { location: await dashboardUrl(parts[1]) })
+      return res.end()
+    }
 
     // GET /frames?version=N -> long-poll for frame changes
     if (req.method === 'GET' && parts[0] === 'frames') {
@@ -1623,3 +1531,7 @@ process.on('SIGHUP', shutdown)
 // reparented, so exit rather than linger with a headless Chrome.
 const parent = process.ppid
 setInterval(() => { if (process.ppid !== parent) shutdown() }, 5_000).unref()
+
+async function dashboardUrl(projectId) {
+  return `${new URL(await apiBaseFor(projectId)).origin}/p/${encodeURIComponent(projectId)}/overview`
+}

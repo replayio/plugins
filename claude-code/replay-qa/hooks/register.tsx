@@ -103,7 +103,7 @@ const OVERVIEW_MS = 4_000
 const PENDING_MS = 1_500
 /** A re-test the backend was asked to start is awaited this long. */
 const PENDING_GIVE_UP_MS = 90_000
-/** A followed project with no live work is let go after this, unless its canvas is open. */
+/** A followed project with no live work is let go after this, unless its dashboard is open. */
 const IDLE_UNFOLLOW_MS = 15 * 60_000
 
 const state = {
@@ -133,11 +133,11 @@ const state = {
   /** Recordings that ended while their screencast was live, parked at the end. */
   parked: new Set<string>(),
   canvasProjectId: null as string | null,
-  /** Why the canvas has no picture (no renderer). */
+  /** Why the dashboard has no picture (no renderer). */
   canvasError: null as string | null,
   /** Why this project is the one showing, when nothing in the folder names it. */
   canvasNote: null as string | null,
-  /** What the pane holds: a project's canvas, or the folder's index or setup list. */
+  /** What the pane holds: a project's dashboard, or the folder's index or setup list. */
   paneView: 'canvas' as 'canvas' | 'folder',
   /** The `replayqa` the plugin runs. */
   cli: REPLAYQA as readonly string[],
@@ -159,13 +159,11 @@ const state = {
   /** What the MCP server last said to a request for a credential, for what the list tells the person to do. */
   mcpAnswer: null as 'gave' | 'needs-sign-in' | 'cannot-share' | null,
   signingIn: null as Promise<void> | null,
-  /** Where the canvas picture sits in the pane body, for the wheel; the screencast size last asked for. */
+  /** Where the dashboard picture sits in the pane body, for the wheel; the screencast size last asked for. */
   canvasPicture: null as { top: number; columns: number; rows: number } | null,
   canvasAsked: null as { width: number; height: number } | null,
-  /** The canvas camera as its last move left it: the zoom, and where the minimap sits (fractions of the picture). */
-  camera: null as CameraState | null,
-  /** Camera moves go to the relay one after another, in order. */
-  cameraQueue: Promise.resolve() as Promise<unknown>,
+  /** Browser input is forwarded in order. */
+  inputQueue: Promise.resolve() as Promise<unknown>,
   statusLine: undefined as string | undefined,
 }
 
@@ -220,7 +218,7 @@ function startRelay($: EngineInterface): Promise<Relay> {
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-/** The frame id the relay gives a project's canvas screencast. */
+/** The frame id the relay gives a project's dashboard screencast. */
 const canvasFrameId = (projectId: string) => `canvas-${projectId.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)}`
 
 function imageSource(frame: { file: string; generation: number }) {
@@ -493,14 +491,13 @@ async function openPane($: EngineInterface, { focus = false } = {}): Promise<voi
   await $.ui.open({ id: PANE, title: 'Replay QA', rows: 26, ...(focus ? { focus: true as const } : {}) })
 }
 
-/** Stops the canvas screencast, if one runs, and forgets the camera. */
+/** Stops the dashboard screencast, if one runs, and forgets the viewport. */
 async function leaveCanvas($: EngineInterface): Promise<void> {
   const projectId = state.canvasProjectId
   state.canvasProjectId = null
   state.canvasError = null
   state.canvasPicture = null
   state.canvasAsked = null
-  state.camera = null
   if (projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false }).catch(() => {})
 }
 
@@ -519,7 +516,7 @@ async function showFolder($: EngineInterface, view: 'index' | 'setup'): Promise<
 const projectList = (projects: DetectedProject[]) => projects.map(p => `- ${p.project_id} (${p.path === '.' ? 'this folder' : p.path})`).join('\n')
 
 /**
- * `/replayqa` from the session's folder: one project opens its canvas, several the index, none the list to
+ * `/replayqa` from the session's folder: one project opens its dashboard, several the index, none the list to
  * set one up. With no detection, the nearest config stands in for it, and the pane says why.
  */
 async function openFolder($: EngineInterface, { apps = false } = {}): Promise<string> {
@@ -553,7 +550,7 @@ async function openFolder($: EngineInterface, { apps = false } = {}): Promise<st
       state.canvasNote = only || config.projectId === projectId ? null : 'This is the last project used in this folder: no .replay/config.json names one. /replayqa setup shows what else is here.'
       const o = state.overviews.get(projectId)
       return [
-        `Replay QA canvas for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.`,
+        `Replay QA dashboard for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.`,
         state.canvasNote ?? '',
         state.detectionWhy ?? '',
         o?.error ? `It could not be read: ${o.error}` : '',
@@ -637,7 +634,7 @@ async function linkProject($: EngineInterface, value: string, projectId: string)
   await $.fs.write(`${dir}/.replay/config.json`, `${JSON.stringify({ ...current, 'qa-project-id': projectId, ...proxy }, null, 2)}\n`)
 }
 
-/** "Use an existing project": writes `qa-project-id` for this folder and opens its canvas. */
+/** "Use an existing project": writes `qa-project-id` for this folder and opens its dashboard. */
 async function useProject($: EngineInterface, value: string): Promise<string> {
   const named = parseProjectArg(value)
   if (!named.projectId) throw new Error(`${value} is not a Replay QA project id (proj-…) or dashboard URL.`)
@@ -648,7 +645,7 @@ async function useProject($: EngineInterface, value: string): Promise<string> {
   return `This folder now uses Replay QA project ${named.projectId}.`
 }
 
-/** "Test a public URL": creates a project for it, on a credential of its own, and opens its canvas. */
+/** "Test a public URL": creates a project for it, on a credential of its own, and opens its dashboard. */
 async function testPublicUrl($: EngineInterface, value: string): Promise<string> {
   let url: URL
   try {
@@ -704,7 +701,7 @@ function handleFolderAction($: EngineInterface, action: Record<string, unknown>)
   }
 }
 
-/** A tunnel's project exists now: the folder has a project, and its canvas is what to look at. */
+/** A tunnel's project exists now: the folder has a project, and its dashboard is what to look at. */
 async function projectFromTunnel($: EngineInterface, tunnel: Tunnel): Promise<void> {
   $.ui.toast(`Replay QA project ${tunnel.projectId} is set up for ${tunnel.label}.`)
   const found = await detectFolder($)
@@ -786,7 +783,7 @@ async function settlePending($: EngineInterface): Promise<void> {
     } else if (Date.now() - item.since < PENDING_GIVE_UP_MS) {
       waiting.push(item)
     } else {
-      state.rowErrors.set(item.rowId, 'No test run started yet: the backend may still be queueing it. Open the canvas to watch for it.')
+      state.rowErrors.set(item.rowId, 'No test run started yet: the backend may still be queueing it. Open the dashboard to watch for it.')
       $.ui.invalidate('ui.render')
     }
   }
@@ -871,49 +868,30 @@ async function showCanvas($: EngineInterface, projectId: string, server?: string
   $.ui.invalidate('ui.render')
 }
 
-type CameraMove =
-  | { op: 'zoom'; factor: number; x?: number; y?: number }
-  | { op: 'pan'; dx: number; dy: number }
-  | { op: 'focus'; x: number; y: number }
-  | { op: 'minimap'; x: number; y: number }
-  | { op: 'gesture'; id: number; sx: number; sy: number; x: number; y: number; done: boolean }
-  | { op: 'fit' }
-  | { op: 'actual' }
-  | { op: 'state' }
-
-type Rect = { x: number; y: number; w: number; h: number }
-type CameraState = { k: number; minimap: Rect | null }
-
-/**
- * Moves the canvas screencast's camera (points and distances are fractions of the picture), and keeps
- * what it answers: the zoom the footer shows and the minimap the camera layer lets the pointer jump on.
- */
-function moveCamera($: EngineInterface, move: CameraMove): void {
+type DashboardInput = { type: string; [key: string]: unknown }
+function sendInput($: EngineInterface, input: DashboardInput): void {
   const projectId = state.canvasProjectId
   if (!projectId) return
-  state.cameraQueue = state.cameraQueue
-    .then(async () => {
-      const { result } = await relayJson<{ result: CameraState | null }>($, `/canvas/${encodeURIComponent(projectId)}/camera`, move)
-      if (!result || typeof result.k !== 'number' || state.canvasProjectId !== projectId) return
-      const before = state.camera
-      state.camera = { k: result.k, minimap: result.minimap ?? null }
-      const pct = (c: CameraState | null) => (c ? Math.round(c.k * 100) : null)
-      if (pct(before) !== pct(state.camera) || JSON.stringify(before?.minimap) !== JSON.stringify(state.camera.minimap)) $.ui.invalidate('ui.render')
-    })
-    // Asked before the screencast's first frame, the relay says it is not on screen yet: not worth a row.
-    .catch(err => $.ui.log(`replay-qa: canvas camera: ${message(err)}`, { to: 'debug' }))
+  state.inputQueue = state.inputQueue.then(async () => {
+    if (state.canvasProjectId !== projectId) return
+    await relayJson($, `/canvas/${encodeURIComponent(projectId)}/input`, input)
+  }).catch(err => $.ui.log(`replay-qa: dashboard input: ${message(err)}`, { to: 'debug' }))
 }
 
-/** The screencast takes the pane picture's shape: asked again when it changes by more than a little. */
+/** The screencast takes the pane picture's shape: updated in order with browser input when the pane changes. */
 function sizeCanvas($: EngineInterface, projectId: string, columns: number, rows: number): void {
-  const width = 1600
-  const height = Math.round((width * rows * CELL_ASPECT) / columns)
+  const width = Math.max(640, Math.min(2400, Math.round(columns * 10)))
+  const height = Math.max(240, Math.min(1600, Math.round((width * rows * CELL_ASPECT) / columns)))
   const asked = state.canvasAsked
-  if (asked && Math.abs(asked.height - height) / asked.height < 0.04) return
+  if (asked && asked.width === width && asked.height === height) return
   state.canvasAsked = { width, height }
-  void relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width, height })
-    .then(() => moveCamera($, { op: 'state' }))
-    .catch(err => $.ui.log(`replay-qa: canvas resize: ${message(err)}`))
+  state.inputQueue = state.inputQueue.then(async () => {
+    if (state.canvasProjectId !== projectId) return
+    await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width, height })
+  }).catch(err => {
+    if (state.canvasProjectId === projectId) state.canvasAsked = null
+    $.ui.log(`replay-qa: dashboard resize: ${message(err)}`)
+  })
 }
 
 const fraction = (v: unknown, lo = 0, hi = 1) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null)
@@ -1005,8 +983,7 @@ async function watchOverviews($: EngineInterface): Promise<void> {
     await settlePending($)
     updateStatusLine($)
     if (changed && state.canvasProjectId) $.ui.invalidate('ui.render')
-    // The canvas fits itself as tiles come and go: keep the zoom and the minimap the pane shows in step.
-    if (state.canvasProjectId) moveCamera($, { op: 'state' })
+
     await $.clock.sleep(state.pending.length ? PENDING_MS : OVERVIEW_MS)
   }
 }
@@ -1048,7 +1025,7 @@ export const register: Register = on => {
     }
     await $.command.register({
       name: 'replayqa',
-      description: "Replay QA for this folder: its project's canvas of every journey, the index of its projects, or the list to set one up",
+      description: "Replay QA for this folder: its project's dashboard of every journey, the index of its projects, or the list to set one up",
       argumentHint: '[canvas|setup|use|test|start|stop|follow|unfollow|live|open|status] [project id, dashboard URL, app path or recording]',
     })
     return started
@@ -1057,7 +1034,7 @@ export const register: Register = on => {
   on('command.run', { command: 'replayqa' }, async ($, e) => {
     if (!state.relay) return { text: `The Replay QA relay is not running${state.relayError ? `: ${state.relayError}` : ''}.` }
     const [first = '', arg] = e.args.trim().split(/\s+/)
-    // A project id or dashboard URL alone means its canvas.
+    // A project id or dashboard URL alone means its dashboard.
     const verb = parseProjectArg(first).projectId ? 'canvas' : first
     const named = parseProjectArg(parseProjectArg(first).projectId ? first : arg)
     try {
@@ -1101,10 +1078,10 @@ export const register: Register = on => {
         if (verb === 'canvas') {
           await showCanvas($, projectId, server)
           const o = state.overviews.get(projectId)
-          return { text: `Replay QA canvas for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.` }
+          return { text: `Replay QA dashboard for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.` }
         }
         const o = await followProject($, projectId, server)
-        return { text: `Following ${o.project?.name ?? projectId}: ${o.counts.live} live. Running explorations and test runs stream into the canvas (/replayqa canvas).` }
+        return { text: `Following ${o.project?.name ?? projectId}: ${o.counts.live} live. Running explorations and test runs stream into the dashboard (/replayqa canvas).` }
       }
       if (verb === 'live' || verb === 'open') {
         const recordings = await relayJson<RecordingInfo[]>($, '/recordings')
@@ -1129,10 +1106,10 @@ export const register: Register = on => {
     }
   })
 
-  // What the Clients post: the canvas camera layer (drags, double-clicks and keys over the picture), and
+  // Browser input and
   // a player row's seek bar. Validated: it is client input.
   on('ui.message', async ($, e, next) => {
-    // `e.module` is the path under the plugin's folder (`hooks/camera.tsx`); the `./` form is the Client's own.
+    // `e.module` is the path under the plugin's folder (`hooks/browser.tsx`); the `./` form is the Client's own.
     const module = e.module.replace(/^(?:\.\/|hooks\/)/, '')
     if (module === 'scrubber.tsx') {
       const row = state.rows.get(e.requestId)
@@ -1140,36 +1117,21 @@ export const register: Register = on => {
       if (row && (data.type === 'seek' || data.type === 'seekBy' || data.type === 'toggle')) await play($, row.recordingId, data.type, data.ms)
       return next(e)
     }
-    if (module !== 'camera.tsx' || e.requestId !== PANE) return next(e)
+    if (module !== 'browser.tsx' || e.requestId !== PANE) return next(e)
     const data = (e.data ?? {}) as Record<string, unknown>
-    if (data.type === 'gesture' && typeof data.id === 'number') {
-      // A press or drag as it stands; the page decides from where it began whether it scrubs, presses or pans.
-      const at = (v: unknown) => fraction(v, -2, 3) ?? 0.5
-      moveCamera($, { op: 'gesture', id: data.id, sx: at(data.sx), sy: at(data.sy), x: at(data.x), y: at(data.y), done: data.done === true })
-    } else if (data.type === 'focus') {
-      moveCamera($, { op: 'focus', x: fraction(data.x) ?? 0.5, y: fraction(data.y) ?? 0.5 })
-    } else if (data.type === 'minimap') {
-      moveCamera($, { op: 'minimap', x: fraction(data.x) ?? 0.5, y: fraction(data.y) ?? 0.5 })
-    } else if (data.type === 'zoom') {
-      moveCamera($, { op: 'zoom', factor: fraction(data.factor, 0.5, 2) ?? 1 })
-    } else if (data.type === 'pan') {
-      moveCamera($, { op: 'pan', dx: fraction(data.dx, -1, 1) ?? 0, dy: fraction(data.dy, -1, 1) ?? 0 })
-    } else if (data.type === 'fit' || data.type === 'actual') {
-      moveCamera($, { op: data.type })
-    }
+    if (data.type === 'batch') sendInput($, data as DashboardInput)
     return next(e)
   })
 
-  // The wheel (two-finger scroll) over the canvas picture zooms around the pointer; elsewhere the pane
-  // scrolls as usual. Drag pans.
+  // Scroll the dashboard under the pointer instead of the enclosing terminal pane.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const picture = state.canvasPicture
     const p = e.pointer
     if (!picture || !p || e.origin.kind !== 'person') return next(e)
     const row = p.row - picture.top
     if (row < 0 || row >= picture.rows || p.column < 0 || p.column >= picture.columns) return next(e)
-    moveCamera($, { op: 'zoom', factor: Math.pow(1.15, -Math.max(-6, Math.min(6, e.by))), x: (p.column + 0.5) / picture.columns, y: (row + 0.5) / picture.rows })
-    return { deny: 'the canvas zoomed instead' }
+    sendInput($, { type: 'wheel', deltaY: Math.max(-1000, Math.min(1000, e.by * 40)), x: (p.column + 0.5) / picture.columns, y: (row + 0.5) / picture.rows })
+    return { deny: 'the dashboard scrolled instead' }
   })
 
   // `$.mcp.call` is put to the session's permission mode like any tool call, and nobody can answer for a press or a
@@ -1252,7 +1214,7 @@ export const register: Register = on => {
           {commandLine}
           {header('Replay QA · live view')}
           {rowError ? <Text color="red" wrap="wrap">⚠ {rowError}</Text> : <Text dimColor>Waiting for the backend to start the run…</Text>}
-          {state.canvasProjectId === null && state.rowProjects.get(id) ? <Button key="canvas" label="Open canvas" onPress={() => { void showCanvas($, state.rowProjects.get(id)!) }} /> : null}
+          {state.canvasProjectId === null && state.rowProjects.get(id) ? <Button key="canvas" label="Open dashboard" onPress={() => { void showCanvas($, state.rowProjects.get(id)!) }} /> : null}
         </Box>
       )
     }
@@ -1322,8 +1284,8 @@ export const register: Register = on => {
                   <Button key="fwd" label="+10s" onPress={() => play($, row.recordingId, 'seekBy', 10_000)} />
                 </Box>
               )}
-            <Button key="canvas" label="Show canvas pane" onPress={() => { void showCanvas($, row.projectId) }} />
-            <Button key="open-canvas" label="Open canvas" onPress={() => openUrl($, canvasPage(row.projectId))} />
+            <Button key="canvas" label="Show dashboard pane" onPress={() => { void showCanvas($, row.projectId) }} />
+            <Button key="open-canvas" label="Open dashboard" onPress={() => openUrl($, canvasPage(row.projectId))} />
             <Button key="open" label="Open in browser" onPress={() => openUrl($, playerPage(row.recordingId))} />
           </Box>
         ) : null}
@@ -1331,7 +1293,7 @@ export const register: Register = on => {
     )
   })
 
-  // The canvas pane: every journey of the project as rrweb players, as one picture.
+  // The dashboard pane: every journey of the project as rrweb players, as one picture.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const projectId = state.canvasProjectId
     const { Box, Text, Button } = $.ui.resolve(e)
@@ -1364,7 +1326,7 @@ export const register: Register = on => {
     const overview = state.overviews.get(projectId)
     const frame = state.frames[canvasFrameId(projectId)]
     const bodyRows = e.props.scroll.bodyRows > 0 ? e.props.scroll.bodyRows : Math.max(8, (e.viewport?.rows ?? 30) - 8)
-    // The picture is the canvas, filling the pane between the header line and the footer line;
+    // The picture is the dashboard, filling the pane between the header line and the footer line;
     // the screencast is asked for that shape, so nothing is letterboxed.
     const columns = Math.max(20, Math.min(MAX_CELLS, e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 100)))
     // What went wrong is a row of its own, wrapped: inside the picture it is too small to read, and in the
@@ -1387,7 +1349,7 @@ export const register: Register = on => {
       </Box>
     )
     const picture = e.surface !== 'terminal'
-      ? <Text dimColor>The canvas draws in the terminal; open it in a browser with the button below.</Text>
+      ? <Text dimColor>The dashboard draws in the terminal; open it in a browser with the button below.</Text>
       : frame && frame.generation > 0
         ? (() => {
             state.mounted.set(PANE, { columns, rows, width, height })
@@ -1396,14 +1358,14 @@ export const register: Register = on => {
             const { Image, Client } = $.ui.resolve(e)
             return (
               <Box key="stage" width={columns} height={rows}>
-                <Image key={CANVAS_KEY} source={imageSource(frame)} columns={columns} rows={rows} alt={`Replay QA canvas for ${name}`} />
+                <Image key={CANVAS_KEY} source={imageSource(frame)} columns={columns} rows={rows} alt={`Replay QA dashboard for ${name}`} />
                 <Box position="absolute" top={0} left={0} width={columns} height={rows}>
-                  <Client key="camera" module="./camera.tsx" width={columns} height={rows} props={{ minimap: state.camera?.minimap ?? null }} />
+                  <Client key="browser" module="./browser.tsx" width={columns} height={rows} props={{}} />
                 </Box>
               </Box>
             )
           })()
-        : problem ? null : <Text dimColor>Loading the canvas…</Text>
+        : problem ? null : <Text dimColor>Loading the dashboard…</Text>
     const tunnel = state.tunnels.find(t => t.isRunning && t.projectId === projectId)
     const hasIndex = (state.detection?.projects.length ?? 0) > 1
     return (
@@ -1414,15 +1376,11 @@ export const register: Register = on => {
         {state.canvasNote ? <Text dimColor wrap="wrap">{state.canvasNote}</Text> : null}
         {picture}
         <Box flexDirection="row" gap={1} height={1} overflow="hidden">
-          <Button key="zoomOut" label="−" onPress={() => moveCamera($, { op: 'zoom', factor: 0.8 })} />
-          <Button key="zoomPct" label={state.camera ? `${Math.round(state.camera.k * 100)}%` : '100%'} onPress={() => moveCamera($, { op: 'actual' })} />
-          <Button key="zoomIn" label="+" onPress={() => moveCamera($, { op: 'zoom', factor: 1.25 })} />
-          <Button key="fit" label="Fit" onPress={() => moveCamera($, { op: 'fit' })} />
           <Button key="open" label="Open in browser" onPress={() => openUrl($, canvasPage(projectId))} />
           {hasIndex ? <Button key="projects" label="Projects" onPress={() => act($, null, () => showFolder($, 'index'))} /> : null}
           {tunnel ? <Button key="stopTunnel" label="Stop tunnel" onPress={() => act($, null, () => stopTunnel($, tunnel.key))} /> : null}
           <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
-          <Text dimColor wrap="truncate-end">{tunnel ? `${tunnel.text} ` : ''}scroll to zoom · drag to pan · ▶ or a tile's timeline to play · double-click a tile · click the minimap to jump</Text>
+          <Text dimColor wrap="truncate-end">{tunnel ? `${tunnel.text} ` : ''}click to interact · scroll to browse</Text>
         </Box>
       </Box>
     )

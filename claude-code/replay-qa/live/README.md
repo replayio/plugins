@@ -5,31 +5,20 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
 - **Inline players.** Start an exploration, re-test a bug fix, or report a missed bug from the
   agent and the result of that call becomes a live rrweb player: the page as the QA agent sees
   it, with its narration, streaming while it runs and scrubbable once it ends.
-- **A canvas.** `/replayqa canvas` opens every journey of the project as a grid of rrweb players.
-  Running explorations and journey runs stream live, in parallel; finished journeys show their
-  latest run. A finished tile shows the run's last frame: the QA API keeps no screenshot, so the
-  relay draws one per run, once, and keeps it in `thumbs/`.
-  Every tile with a recording has playback controls: ▶/❚❚, a timeline to press or drag (the tile shows
-  that moment, and the screencast with it), the time, and **● Live** to follow a running recording again.
-  Only running tiles have a player from the start; a finished one shows its thumbnail under placeholder
-  controls and gets a player the first time they are used, which then plays or shows the moment pressed.
-  The same canvas opens in a browser tab, where it pans and zooms: pinch or Ctrl/⌘-scroll to zoom,
-  scroll or drag to pan, double-click a tile to focus it, `0` to fit.
-  In the terminal the pane's picture is that canvas alone, sized to the pane: scroll over it to zoom
-  around the pointer, drag to pan, double-click a tile to focus it, use the footer's
-  `−` `100%` `+` `Fit` buttons, or once clicked `+` `-` `0` `1` and the arrows. Both views have a
-  minimap in the corner (tiles in their status colours, the view outlined): press or drag on it to
-  move the view there. A press or drag is sent whole to the page (`gesture`), which decides from
-  where it began whether it scrubs, presses a button or pans. `hooks/camera.tsx` turns those into the
-  relay's `/canvas/:project/camera` moves, which it runs in the screencast page.
+- **The project dashboard.** `/replayqa` opens the site's own `/p/<project>/overview` page.
+  The relay loads it in Chromium and displays its browser picture in the terminal pane. Clicks,
+  drags, typing and scrolling go directly to that browser through CDP. Resizing the pane resizes
+  the same browser viewport, preserving the current page, selection and playback state.
+  There is no separate canvas, camera, minimap or thumbnail renderer. `/replayqa canvas` remains
+  a compatible alias for opening the dashboard.
 
 ## The session's folder
 
 `/replayqa` follows the folder the session is in. It runs `replayqa detect --json` there and shows:
 
-- **One project:** its canvas.
+- **One project:** its dashboard.
 - **Several** (a monorepo, each app with its own `.replay/config.json`): an index, in the pane and in the
-  browser view (`folder.html`). Choosing one opens its canvas, and **Projects** comes back.
+  browser view (`folder.html`). Choosing one opens its dashboard, and **Projects** comes back.
 - **None:** a setup list of the apps it found, with why each was picked and the exact command, and one action
   per app to start it. These are suggestions: nothing has been run, and ports are guesses, so Start asks first and
   says when something already listens on the port. It also offers using an existing project (`replayqa link`) and
@@ -39,7 +28,7 @@ If `replayqa detect` can't run (offline, or the pinned CLI not published yet) th
 in for it, and the pane says why. A project is never taken from another folder: besides the config, the only fallback
 is the last project seen in this same folder (its nearest config's, else its git root).
 
-The index and the list are drawn as native rows, not as the canvas screencast. In a docked pane a 1600px page scaled to
+The index and the list are drawn as native rows, not as the dashboard screencast. In a docked pane a 1600px page scaled to
 fit is too small to read, a command in a picture can't be selected, a field in one can't be typed in, and this is what
 a person sees first, before Replay Chromium or a terminal with graphics are known to be there. For the same reason an
 error from the QA server is a row of its own above the picture. It names the server it asked, and says when that server
@@ -93,9 +82,13 @@ header no page has (`hookToken`): a page's URL holds the relay's token, and a br
    `replayqa recording-events` for every exploration, test run and task that is running, until the
    project's status says it is done, and keeps the rrweb events in
    memory and in `~/.claude/replay-qa-live/recordings/*.ndjson`, so a finished run is only fetched once.
-3. `player.html` plays one recording with rrweb's `Replayer`; `canvas.html` lays out many of them.
-   The relay renders either in headless Replay Chromium and screencasts PNG frames, which the hooks
-   module draws as an `Image` in the conversation.
+3. `player.html` plays inline recordings with rrweb's `Replayer`. The project pane uses the
+   dashboard's `/p/` pages directly. Both are rendered in headless Chromium and displayed as PNG
+   frames. The transparent client surface forwards browser input in order, preserving fast clicks
+   when the host coalesces client posts within a frame.
+4. Dashboard API requests receive the relay's current bearer token through CDP request interception,
+   only for `/api/` on that dashboard's exact origin. Tokens never enter page JavaScript or URLs.
+   **Open in browser** opens the dashboard in the user's normal browser, which uses its own login.
 
 `recording-events` owns what the API makes necessary: pages over its 6 MB limit are fetched smaller, and events too big for one row are joined back together. The CLI is pinned, in `relay.mjs` as in the skill and `hooks/register.tsx`, so a release cannot change this stream by itself. The relay still calls the API itself for the project overview it polls, as starting a process for each poll would be too slow.
 
@@ -118,7 +111,7 @@ else uses `REPLAY_QA_API_BASE`, `REPLAY_QA_URL` or qa.replay.io. See Signing in 
 
 ```bash
 npm test         # the relay, against a mock of the QA API; REPLAY_QA_CLI="node /path/to/replayqa-cli/bin.js" uses a checkout of the CLI
-npm run demo     # the mock API and the relay; prints folder and canvas URLs to open in a browser (DEMO_VIEW=index|setup|none|nodetect)
+npm run demo     # the mock API and the relay; prints folder and dashboard URLs to open in a browser (DEMO_VIEW=index|setup|none|nodetect)
 ```
 
 `test/mock-qa-api.mjs` serves the same response shapes as the real API, with its size cap and chunking,

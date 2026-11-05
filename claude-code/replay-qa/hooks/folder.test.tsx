@@ -136,7 +136,6 @@ async function session($: any, on: any, world: World = {}) {
     if (url.pathname === '/tunnels') return answer({ key: body.key, label: body.label, targetUrl: body.targetUrl, status: 'preparing', text: 'Starting replayqa…', isRunning: true, projectId: null, qaUrl: null, error: null, note: null, tail: [] })
     if (url.pathname.endsWith('/stop')) return answer({})
     if (url.pathname.endsWith('/view')) return answer({})
-    if (url.pathname.endsWith('/camera')) return answer({ result: { k: 1, minimap: null } })
     if (url.pathname === '/frames' && feed.length) return answer({ version: 1, frames: {}, ...feed.shift() })
     return answer({ error: 'not here' }, 500)
   })
@@ -217,7 +216,7 @@ test('an explicit project or dashboard URL still wins, and is remembered for thi
 
 test('a project id alone means its canvas', async ($, on) => {
   const { run, followed } = await session($, on)
-  expect(await run('proj-direct')).toContain('Replay QA canvas for Name of proj-direct')
+  expect(await run('proj-direct')).toContain('Replay QA dashboard for Name of proj-direct')
   expect(followed()).toEqual(['proj-direct'])
 })
 
@@ -230,7 +229,7 @@ test('a remembered project stays with its folder: a session elsewhere does not s
   expect(followed()).toEqual([])
 })
 
-test('a row\'s Open canvas opens that row\'s project, not the last one seen', async ($, on) => {
+test('a row\'s Open dashboard opens that row\'s project, not the last one seen', async ($, on) => {
   const { followed, relay } = await session($, on, {
     store: { 'qa-last-project': STALE_PROJECT }, bash: JSON.stringify({ id: 'bug-1', project_id: 'proj-row', journey_id: 'j1' }),
   })
@@ -250,7 +249,7 @@ test('a row\'s Open canvas opens that row\'s project, not the last one seen', as
 
 test('one project opens its canvas, on the server its config names', async ($, on) => {
   const { run, called } = await session($, on, { detect: configured({ project_id: 'proj-one', path: '.', qa_url: PREVIEW }) })
-  expect(await run('')).toContain('Replay QA canvas for Name of proj-one')
+  expect(await run('')).toContain('Replay QA dashboard for Name of proj-one')
   expect(called('/qa/follow').map(call => [call.body.projectId, call.body.server])).toEqual([['proj-one', PREVIEW]])
   expect(called('/canvas/proj-one/view').at(-1)?.body.on).toBe(true)
 })
@@ -281,7 +280,7 @@ test('several projects draw an index, on every surface; choosing one opens its c
   const ui = await mount()
   await ui.press({ key: 'open:proj-b' })
   expect(called('/qa/follow').map(call => [call.body.projectId, call.body.server])).toEqual([['proj-b', PREVIEW]])
-  expect(await ui.find({ key: 'zoomIn' })).toBeTruthy()
+  expect(await ui.find({ key: 'open' })).toBeTruthy()
   await ui.press({ key: 'projects' })
   expect(await ui.find({ key: 'open:proj-a' })).toBeTruthy()
   expect(called('/canvas/proj-b/view').at(-1)?.body.on).toBe(false)
@@ -467,10 +466,10 @@ test('with no such tool, Start still runs, on whatever sign-in the CLI finds', a
 
 test('with no such tool, one project still opens its canvas and several still draw the index', async ($, on) => {
   const one = await session($, on, { mcp: 'no-tool', detect: configured({ project_id: 'proj-one', path: '.', qa_url: null }) })
-  expect(await one.run('')).toContain('Replay QA canvas for Name of proj-one')
+  expect(await one.run('')).toContain('Replay QA dashboard for Name of proj-one')
   expect(one.followed()).toEqual(['proj-one'])
   const ui = await one.mount()
-  expect(await ui.find({ key: 'zoomIn' })).toBeTruthy()
+  expect(await ui.find({ key: 'open' })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -580,7 +579,7 @@ test('a tunnel that made its project opens that canvas and says so', async ($, o
   expect(followed()).toContain('proj-made')
   expect(said.some(text => text.includes('proj-made'))).toBe(true)
   const ui = await mount()
-  expect(await ui.find({ key: 'zoomIn' })).toBeTruthy()
+  expect(await ui.find({ key: 'open' })).toBeTruthy()
   expect(await ui.find({ key: 'stopTunnel' })).toBeTruthy()
   await ui.unmount()
 })
