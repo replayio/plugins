@@ -27,6 +27,7 @@ async function openCanvas($: Parameters<Test>[0], on: Parameters<Test>[1]) {
   mock.store(on)
   const camera: Record<string, unknown>[] = []
   const views: Record<string, unknown>[] = []
+  const payloads: { events?: unknown[] }[] = []
   let framesServed = false
 
   on('process.spawn', async function* () {
@@ -40,7 +41,7 @@ async function openCanvas($: Parameters<Test>[0], on: Parameters<Test>[1]) {
     const answer = (value: unknown, status = 200) => ({ value: { status, ok: status < 300, headers: {}, text: JSON.stringify(value) } })
     if (url.pathname === '/qa/follow' || url.pathname === '/qa/overview') return answer(OVERVIEW)
     if (url.pathname.endsWith('/view')) { views.push(body); return answer(FRAME) }
-    if (url.pathname.endsWith('/input')) { if (body.type !== 'batch') camera.push(body); for (const event of body.events ?? []) { if (!camera.some(c => c.seq === event.seq)) camera.push({ ...event.input, seq: event.seq }) } return answer({ ok: true }) }
+    if (url.pathname.endsWith('/input')) { payloads.push(body); if (body.type !== 'batch') camera.push(body); for (const event of body.events ?? []) { if (!camera.some(c => c.seq === event.seq)) camera.push({ ...event.input, seq: event.seq }) } return answer({ ok: true }) }
     if (url.pathname === '/frames' && !framesServed) {
       framesServed = true
       return answer({ version: 1, frames: { [`canvas-${PROJECT}`]: FRAME } })
@@ -72,7 +73,7 @@ async function openCanvas($: Parameters<Test>[0], on: Parameters<Test>[1]) {
   const moves = () => camera.filter(c => c.op !== 'state')
   /** The same, less the gestures every press sends (the page decides what a gesture does). */
   const others = () => moves().filter(c => c.op !== 'gesture')
-  return { ui, clock, camera, views, moves, others }
+  return { ui, clock, camera, views, moves, others, payloads }
 }
 
 test('the dashboard fills the pane and resizes its browser viewport', async ($, on) => {
@@ -116,5 +117,19 @@ test('a quick click within one client frame preserves both mouse events', async 
   await ui.advance(20)
   await clock.settle()
   expect(camera.map(c => c.event)).toEqual(['down', 'up'])
+  await ui.unmount()
+})
+
+
+test('pointer history stays compact and retains the following click', async ($, on) => {
+  const { ui, clock, camera, payloads } = await openCanvas($, on)
+  for (let x = 0; x < 60; x++) await ui.pointer({ type: 'move', x, y: 10, in: 'browser' })
+  await ui.pointer({ type: 'down', x: 59, y: 10, button: 'left', in: 'browser' })
+  await ui.pointer({ type: 'up', x: 59, y: 10, button: 'left', in: 'browser' })
+  await ui.advance(20)
+  await clock.settle()
+  expect(Math.max(...payloads.map(p => p.events?.length ?? 0))).toBeLessThanOrEqual(3)
+  expect(camera.slice(-2).map(c => c.event)).toEqual(['down', 'up'])
+  expect(camera.filter(c => c.event === 'move').at(-1)!.x).toBe(59.5 / 80)
   await ui.unmount()
 })

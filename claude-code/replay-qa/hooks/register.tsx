@@ -1,4 +1,5 @@
 /* @jsx h */
+import { createDashboardQueue } from '../live/dashboard-queue.mjs'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { isRunningStatus, jsonValues, parseQaCommand, parseQaOutput, type QaCommand } from './detect.ts'
@@ -166,7 +167,7 @@ const state = {
   canvasPicture: null as { top: number; columns: number; rows: number } | null,
   canvasAsked: null as { width: number; height: number } | null,
   /** Browser input is forwarded in order. */
-  inputQueue: Promise.resolve() as Promise<unknown>,
+  dashboardQueue: null as { projectId: string; queue: ReturnType<typeof createDashboardQueue> } | null,
   statusLine: undefined as string | undefined,
 }
 
@@ -534,6 +535,8 @@ async function openPane($: EngineInterface, { focus = false } = {}): Promise<voi
 
 /** Stops the dashboard screencast, if one runs, and forgets the viewport. */
 async function leaveCanvas($: EngineInterface): Promise<void> {
+  state.dashboardQueue?.queue.close()
+  state.dashboardQueue = null
   const projectId = state.canvasProjectId
   state.canvasProjectId = null
   state.canvasError = null
@@ -916,13 +919,28 @@ async function showCanvas($: EngineInterface, projectId: string, server?: string
 }
 
 type DashboardInput = { type: string; [key: string]: unknown }
+function browserQueue($: EngineInterface, projectId: string) {
+  if (state.dashboardQueue?.projectId === projectId) return state.dashboardQueue.queue
+  state.dashboardQueue?.queue.close()
+  const queue = createDashboardQueue({
+    sendInput: async (input: DashboardInput) => {
+      if (state.canvasProjectId === projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/input`, input)
+    },
+    resize: async (view: { width: number; height: number }) => {
+      if (state.canvasProjectId === projectId) await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, ...view })
+    },
+    onError: (err: unknown, kind: string) => {
+      if (kind === 'resize' && state.canvasProjectId === projectId) state.canvasAsked = null
+      $.ui.log(`replay-qa: dashboard ${kind}: ${message(err)}`, { to: 'debug' })
+    },
+  })
+  state.dashboardQueue = { projectId, queue }
+  return queue
+}
+
 function sendInput($: EngineInterface, input: DashboardInput): void {
   const projectId = state.canvasProjectId
-  if (!projectId) return
-  state.inputQueue = state.inputQueue.then(async () => {
-    if (state.canvasProjectId !== projectId) return
-    await relayJson($, `/canvas/${encodeURIComponent(projectId)}/input`, input)
-  }).catch(err => $.ui.log(`replay-qa: dashboard input: ${message(err)}`, { to: 'debug' }))
+  if (projectId) browserQueue($, projectId).push(input)
 }
 
 /** The screencast takes the pane picture's shape: updated in order with browser input when the pane changes. */
@@ -932,13 +950,7 @@ function sizeCanvas($: EngineInterface, projectId: string, columns: number, rows
   const asked = state.canvasAsked
   if (asked && asked.width === width && asked.height === height) return
   state.canvasAsked = { width, height }
-  state.inputQueue = state.inputQueue.then(async () => {
-    if (state.canvasProjectId !== projectId) return
-    await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width, height })
-  }).catch(err => {
-    if (state.canvasProjectId === projectId) state.canvasAsked = null
-    $.ui.log(`replay-qa: dashboard resize: ${message(err)}`)
-  })
+  browserQueue($, projectId).resize({ width, height })
 }
 
 const fraction = (v: unknown, lo = 0, hi = 1) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null)
@@ -961,7 +973,10 @@ async function watchFrames($: EngineInterface): Promise<void> {
     if (snapshot.tunnels) updateTunnels($, snapshot.tunnels)
     for (const action of snapshot.actions ?? []) handleFolderAction($, action)
     let redraw = false
-    for (const [id, fresh] of Object.entries(snapshot.frames)) {
+    // The interactive project gets its picture before background recording previews.
+    const dashboardId = state.canvasProjectId ? canvasFrameId(state.canvasProjectId) : null
+    const orderedFrames = Object.entries(snapshot.frames).sort(([a], [b]) => Number(b === dashboardId) - Number(a === dashboardId))
+    for (const [id, fresh] of orderedFrames) {
       const before = state.frames[id]
       state.frames[id] = fresh
       if (fresh.kind === 'canvas') {

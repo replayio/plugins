@@ -4,7 +4,8 @@
   "description": "Relay and pages for the Replay QA live views. Tests: npm test",
   "type": "module",
   "scripts": {
-    "test": "node --test test/dashboard-input.test.mjs test/stream.test.mjs test/pin.test.mjs test/relay.test.mjs",
-    "demo": "node test/serve-demo.mjs"
+    "test": "node --test test/frame-pump.test.mjs test/dashboard-queue.test.mjs test/dashboard-input.test.mjs test/stream.test.mjs test/pin.test.mjs test/relay.test.mjs",
+    "demo": "node test/serve-demo.mjs",
+    "bench": "node test/browser-bench.mjs ./relay.mjs --coalesced"
   }
 }

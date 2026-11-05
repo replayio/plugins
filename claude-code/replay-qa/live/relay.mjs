@@ -15,6 +15,7 @@
 // Zero dependencies: Node >= 22 (global fetch + WebSocket).
 // Prints one JSON line on stdout once listening: { port, token, dataDir, hookToken }.
 
+import { createFramePump } from './frame-pump.mjs'
 import { dispatchDashboardInput } from './dashboard-input.mjs'
 import http from 'node:http'
 import fs from 'node:fs'
@@ -43,6 +44,7 @@ const PLAYER_H = 800
 const CANVAS_W = 1600
 const CANVAS_H = 900
 const MAX_FPS = 12
+const DASHBOARD_FPS = 30
 const LONG_POLL_MS = 20_000
 const FOLLOW_MS = 4_000
 const LIVE_POLL_MS = 1_000
@@ -839,7 +841,7 @@ async function readLoop(rec) {
 
 // ---------------------------------------------------------------- screencasts
 
-/** view id -> { targetId, sessionId, kind, mode, touched, lastWrite, timer, pendingFrame } */
+/** view id -> { targetId, sessionId, kind, mode, touched, framePump } */
 const players = new Map()
 const MAX_PLAYERS = 4
 const IDLE_PLAYER_MS = 10 * 60_000
@@ -866,7 +868,7 @@ async function openTarget(url, width, height, onEvent) {
     }
     onEvent(method, params)
   })
-  if (dashboard) await chrome.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId)
+  if (dashboard) await chrome.send('Fetch.enable', { patterns: [{ urlPattern: `${origin}/api/*`, requestStage: 'Request' }] }, sessionId)
   await chrome.sendSettled('Page.enable', {}, sessionId)
   await chrome.sendSettled('Runtime.enable', {}, sessionId)
   await chrome.sendSettled('Runtime.addBinding', { name: '__playerEvent' }, sessionId)
@@ -902,33 +904,26 @@ async function startView(id, url, width, height, { kind, mode, paused = false, t
     ...entry, kind, width, height, mode, status: paused ? 'paused' : 'playing',
     currentMs: t, totalMs, at: Date.now(), seq: (entry.seq ?? 0) + 1,
   })
-  const player = { kind, mode, touched: Date.now(), lastWrite: 0, timer: null, pendingFrame: null }
+  const player = { kind, mode, touched: Date.now(), framePump: null }
   players.set(id, player)
 
-  const writeFrame = async data => {
-    player.lastWrite = Date.now()
-    const tmp = `${frameFile}.${process.pid}.tmp`
-    await fsp.writeFile(tmp, Buffer.from(data, 'base64'))
-    await fsp.rename(tmp, frameFile)
-    const f = frames.get(id)
-    if (f) f.generation += 1
-    bump(id)
-  }
+  player.framePump = createFramePump({
+    fps: kind === 'canvas' ? DASHBOARD_FPS : MAX_FPS,
+    write: async (data, isCurrent) => {
+      const tmp = `${frameFile}.${process.pid}.tmp`
+      await fsp.writeFile(tmp, Buffer.from(data, 'base64'))
+      if (!isCurrent()) { await fsp.rm(tmp, { force: true }); return }
+      await fsp.rename(tmp, frameFile)
+      const f = frames.get(id)
+      if (f && isCurrent()) { f.generation += 1; bump(id) }
+    },
+    onError: err => log('frame write failed', err.message),
+  })
 
   const target = await openTarget(url, width, height, (method, params) => {
     if (method === 'Page.screencastFrame') {
       chrome.send('Page.screencastFrameAck', { sessionId: params.sessionId }, player.sessionId).catch(() => {})
-      // Throttle to MAX_FPS, always keeping the newest frame.
-      player.pendingFrame = params.data
-      const wait = Math.max(0, 1000 / MAX_FPS - (Date.now() - player.lastWrite))
-      if (!player.timer) {
-        player.timer = setTimeout(() => {
-          player.timer = null
-          const data = player.pendingFrame
-          player.pendingFrame = null
-          if (data) writeFrame(data).catch(err => log('frame write failed', err.message))
-        }, wait)
-      }
+      player.framePump.push(params.data)
     } else if (kind === 'recording' && method === 'Runtime.bindingCalled' && params.name === '__playerEvent') {
       const f = frames.get(id)
       if (!f || players.get(id) !== player) return
@@ -1004,7 +999,7 @@ async function stopPlayer(id, only) {
   const player = players.get(id)
   if (!player || (only && player !== only)) return
   players.delete(id)
-  clearTimeout(player.timer)
+  await player.framePump?.close()
   if (player.sessionId) await closeTarget(player)
   const f = frames.get(id)
   if (f && (f.status === 'playing' || f.status === 'paused')) f.status = 'stopped'

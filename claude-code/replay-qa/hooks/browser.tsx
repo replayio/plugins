@@ -16,7 +16,11 @@ export default function Dashboard(_props: unknown, surface: ClientSurface) {
   // Client posts coalesce within a frame. Keep a short sequence so a quick down/up or typing burst
   // survives that coalescing; the browser discards events it has already dispatched.
   const post = (input: Record<string, unknown>) => {
-    state.events.push({ seq: ++state.seq, input })
+    const event = { seq: ++state.seq, input }
+    const last = state.events.at(-1)?.input
+    if (input.type === 'pointer' && input.event === 'move' && last?.type === 'pointer' && last.event === 'move' && input.button === last.button) {
+      state.events[state.events.length - 1] = event
+    } else state.events.push(event)
     state.events = state.events.slice(-128)
     surface.post({ type: 'batch', stream: state.stream, events: [...state.events] })
   }

@@ -418,6 +418,16 @@
           "path": "claude-code/replay-qa/tsconfig.json",
           "type": "registry:file",
           "target": "~/.claude/skills/replay-qa/tsconfig.json"
+        },
+        {
+          "path": "claude-code/replay-qa/live/dashboard-queue.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replay-qa/live/dashboard-queue.mjs"
+        },
+        {
+          "path": "claude-code/replay-qa/live/frame-pump.mjs",
+          "type": "registry:file",
+          "target": "~/.claude/skills/replay-qa/live/frame-pump.mjs"
         }
       ]
     },

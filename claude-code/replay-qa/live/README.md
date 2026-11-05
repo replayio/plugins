@@ -12,6 +12,23 @@ Replay QA runs its browsers in the cloud. This folder streams what they do into 
   There is no separate canvas, camera, minimap or thumbnail renderer. `/replayqa canvas` remains
   a compatible alias for opening the dashboard.
 
+## Interaction performance
+
+The project view targets 30 frames per second; background recording previews retain their lower
+12 FPS budget. A single frame writer publishes the newest pending picture and never overlaps file
+writes, so slow PNG writes cannot queue old pictures or overwrite a newer one. The project picture
+is delivered before background preview pictures.
+
+Pointer history is compacted in the terminal client, and the relay input queue coalesces obsolete
+mouse positions and pending resizes. Button presses, releases and keys stay ordered; cumulative
+client history is sent only once and sequenced batches can safely retry a lost response. Only the
+dashboard's API requests are intercepted for authentication, leaving assets off that path.
+
+Run `npm run bench` from `live/` to measure a local animated
+page, a burst of 100 pointer moves followed by a click, and ten ordinary clicks. It reports relay
+frame publication and input-to-browser timing, not terminal presentation latency. Omit `--coalesced`
+to benchmark the old FIFO input behavior. Pass a saved relay path to compare revisions.
+
 ## The session's folder
 
 `/replayqa` follows the folder the session is in. It runs `replayqa detect --json` there and shows:
