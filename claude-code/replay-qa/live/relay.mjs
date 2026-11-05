@@ -533,7 +533,7 @@ const itemsOf = data => (Array.isArray(data) ? data : data?.items ?? [])
 
 async function refreshProject(projectId, { maxAge = 0 } = {}) {
   let state = projects.get(projectId)
-  if (!state) projects.set(projectId, (state = { project: null, journeys: [], runs: [], explorations: [], liveTasks: [], updatedAt: 0, error: null, refreshing: null }))
+  if (!state) projects.set(projectId, (state = { project: null, journeys: [], runs: [], explorations: [], liveTasks: [], updatedAt: 0, error: null, authRequired: false, refreshing: null }))
   if (state.refreshing) return state.refreshing
   if (maxAge && Date.now() - state.updatedAt < maxAge) return state
   state.refreshing = (async () => {
@@ -552,7 +552,8 @@ async function refreshProject(projectId, { maxAge = 0 } = {}) {
         request(`/projects/${enc}/tasks?status=queued&page=1&page_size=50`),
       ])
       for (const r of [project, journeys, runs]) {
-        if (r.status === 401 || r.status === 403) throw new AuthError(`Replay QA on ${host} answered ${r.status} for project ${projectId}: ${HOW_TO_SIGN_IN}.${previewNote}`)
+        if (r.status === 401) throw new AuthError(`Replay QA on ${host} answered ${r.status} for project ${projectId}: ${HOW_TO_SIGN_IN}.${previewNote}`)
+        if (r.status === 403) throw new Error(`Replay QA on ${host} denied access to project ${projectId}. Check that this account is a project member.${previewNote}`)
         if (r.status === 404) throw new NotFoundError(`No Replay QA project ${projectId} on ${host}: for a PR preview or staging, open the canvas with its dashboard URL.${previewNote}`)
         if (r.status !== 200) throw new Error(`Replay QA on ${host} answered ${r.status} for project ${projectId}.${previewNote}`)
       }
@@ -563,8 +564,10 @@ async function refreshProject(projectId, { maxAge = 0 } = {}) {
       state.explorations = explorations.status === 200 ? itemsOf(explorations.data) : []
       state.liveTasks = [...itemsOf(running.data), ...itemsOf(queued.data)]
       state.error = null
+      state.authRequired = false
       state.updatedAt = Date.now()
     } catch (err) {
+      state.authRequired = err instanceof AuthError
       state.error = err instanceof AuthError || err instanceof NotFoundError || /Replay QA on /.test(err.message)
         ? err.message
         : `Could not reach Replay QA on ${host} for project ${projectId}: ${err.message}.${previewNote}`
@@ -668,7 +671,7 @@ function overview(projectId) {
     })
   }
   return {
-    project: state.project, server: state.server && state.server !== DEFAULT_API_BASE ? state.server : null, error: state.error, updatedAt: state.updatedAt, following: followed.has(projectId),
+    project: state.project, server: state.server && state.server !== DEFAULT_API_BASE ? state.server : null, error: state.error, authRequired: state.authRequired, updatedAt: state.updatedAt, following: followed.has(projectId),
     counts: {
       live: tiles.filter(t => t.isLive).length,
       journeys: state.journeys.length,
@@ -853,7 +856,7 @@ async function openTarget(url, width, height, onEvent) {
       void (async () => {
         const request = new URL(params.request.url)
         const token = request.origin === origin && request.pathname.startsWith('/api/')
-          ? await authToken(`${origin}/api/v1`) : null
+          ? await authToken(`${origin}/api/v1`).catch(err => { if (err instanceof AuthError) return null; throw err }) : null
         const headers = Object.entries(params.request.headers).filter(([name]) => !token || name.toLowerCase() !== 'authorization')
           .map(([name, value]) => ({ name, value: String(value) }))
         if (token) headers.push({ name: 'Authorization', value: `Bearer ${token}` })

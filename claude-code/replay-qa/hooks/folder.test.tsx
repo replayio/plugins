@@ -50,6 +50,9 @@ type World = {
   mcpVerdict?: 'allow' | 'ask' | 'deny'
   /** Whether the relay finds REPLAY_QA_API_KEY or a `replayqa login`. */
   existing?: boolean
+  authGate?: boolean
+  login?: { exitCode: number; save?: boolean }
+  mcpRecover?: boolean
   overview?: (projectId: string) => unknown
   portIsOpen?: boolean
   env?: Record<string, string>
@@ -89,6 +92,10 @@ async function session($: any, on: any, world: World = {}) {
     runs.push({ argv: e.argv, init: e.init })
     const answer = (exitCode: number, stdout = '', stderr = '') => ({ value: { exitCode, stdout, stderr } })
     if (e.argv[0] === 'git') return git ? answer(0, `${git.top}\n${git.prefix}\n`) : answer(128, '', 'fatal: not a git repository')
+    if (e.argv.includes('login')) {
+      if (world.login?.save) world.existing = true
+      return answer(world.login?.exitCode ?? 1)
+    }
     const verb = e.argv.find((word: string) => ['detect', 'link', 'bootstrap'].includes(word))
     if (verb === 'detect') {
       const detect = world.detect ?? WORKSPACE
@@ -130,7 +137,7 @@ async function session($: any, on: any, world: World = {}) {
     if (url.pathname === '/auth/status') return answer({ mcp: mcpSignedIn ? [{ origin: 'https://qa.replay.io', expiresAt: 1e15 }] : [], existing: world.existing === true })
     if (url.pathname === '/auth/credential') { mcpSignedIn = true; return answer({ origin: 'https://qa.replay.io', expiresAt: 1e15 }) }
     if (url.pathname === '/auth/mint') return answer(mcpSignedIn ? { credential: `${CREDENTIAL}relay`, qaUrl: 'https://qa.replay.io' } : { credential: null, qaUrl: null })
-    if (url.pathname === '/qa/follow' || url.pathname === '/qa/overview') return answer(world.overview?.(project) ?? overviewOf(project))
+    if (url.pathname === '/qa/follow' || url.pathname === '/qa/overview') return answer(world.overview?.(project) ?? (world.authGate && !mcpSignedIn && !world.existing ? { ...overviewOf(project, 'No Replay QA sign-in'), authRequired: true } : overviewOf(project)))
     if (url.pathname === '/qa/folder') return e.init?.method === 'POST' ? answer({ ok: true }) : answer({ summaries: { 'proj-a': { name: 'Project A', error: null } } })
     if (url.pathname.startsWith('/ports/')) return answer({ port: 4206, isOpen: world.portIsOpen === true })
     if (url.pathname === '/tunnels') return answer({ key: body.key, label: body.label, targetUrl: body.targetUrl, status: 'preparing', text: 'Starting replayqa…', isRunning: true, projectId: null, qaUrl: null, error: null, note: null, tail: [] })
@@ -142,11 +149,11 @@ async function session($: any, on: any, world: World = {}) {
   on('ui.toast', (_: any, e: any) => { said.push(String(e.text)); return { value: undefined } })
   on('ui.log', (_: any, e: any) => { said.push(String(e.text)); return { value: undefined } })
   on('ui.status', () => ({ value: undefined }))
-  on('command.register', () => ({ value: { command: 'replayqa' } }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: {} }))
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
-  on('command.run', () => ({ text: '' }))
+  on('command.run', (_, e) => { if (e.command === 'mcp' && world.mcpRecover) world.mcp = 'gives'; return { text: '' } })
   on('tool.call', { tool: 'Bash' }, () => ({ result: {}, text: world.bash ?? '' }) as any)
   if (world.bashAndMcp) on('tool.call', { tool: /^mcp__/ }, () => ({ result: {}, text: '{"bugs":[]}' }) as any)
 
@@ -727,5 +734,54 @@ test('the canvas says which server failed, whole and in a row of its own', async
   expect(row?.text).toContain('pr-7162--loop-qa-j63k5x.netlify.app')
   expect(row?.text).toContain('preview of PR #7162')
   expect(await ui.find({ type: 'Text', text: /pr-7162--loop-qa-j63k5x\.netlify\.app$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+
+test('a signed-out project shows native sign-in actions instead of a headless login popup', async ($, on) => {
+  const { run, mount, called } = await session($, on, { mcp: 'needs-auth', authGate: true })
+  await run('canvas proj-private')
+  const ui = await mount()
+  expect(await ui.find({ type: 'Text', text: 'Sign in to Replay QA' })).toBeTruthy()
+  expect(await ui.find({ key: 'sign-in-mcp' })).toBeTruthy()
+  expect(await ui.find({ key: 'sign-in-browser' })).toBeTruthy()
+  expect(called('/canvas/proj-private/view').some(c => c.body.on === true)).toBe(false)
+  await ui.unmount()
+})
+
+test('authenticating the correct MCP server shares its sign-in and opens the selected dashboard', async ($, on) => {
+  const { run, mount, called, clock, minted } = await session($, on, { mcp: 'needs-auth', authGate: true, mcpRecover: true })
+  await run('canvas proj-private')
+  const ui = await mount()
+  await $.command.run({ command: 'mcp', args: '' })
+  await clock.settle()
+  expect(minted.length).toBe(1)
+  expect(called('/auth/credential').length).toBe(1)
+  expect(called('/canvas/proj-private/view').at(-1)?.body.on).toBe(true)
+  expect(await ui.find({ key: 'sign-in-browser' })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('browser fallback signs in once, reloads the project and leaves the MCP connection alone', async ($, on) => {
+  const { run, mount, runs, called, clock } = await session($, on, { mcp: 'no-tool', authGate: true, login: { exitCode: 0, save: true } })
+  await run('canvas proj-private')
+  const ui = await mount()
+  await ui.press({ key: 'sign-in-browser' })
+  await clock.settle()
+  expect(runs.filter(r => r.argv.includes('login')).length).toBe(1)
+  expect(called('/canvas/proj-private/view').at(-1)?.body.on).toBe(true)
+  expect(await ui.find({ key: 'sign-in-browser' })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('a cancelled browser login keeps the recovery actions and reports a useful error', async ($, on) => {
+  const { run, mount, called, clock } = await session($, on, { mcp: 'no-tool', authGate: true, login: { exitCode: 1 } })
+  await run('canvas proj-private')
+  const ui = await mount()
+  await ui.press({ key: 'sign-in-browser' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /Sign-in did not finish/ })).toBeTruthy()
+  expect(await ui.find({ key: 'retry-auth' })).toBeTruthy()
+  expect(called('/canvas/proj-private/view').some(c => c.body.on === true)).toBe(false)
   await ui.unmount()
 })

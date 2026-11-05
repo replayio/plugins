@@ -19,7 +19,13 @@ claude plugin install replay-qa@replayio
 
 ## Sign in
 
-Run `npx --yes replayqa@0.7.0 login` once. Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token. The MCP server signs in separately through `/mcp`.
+Open `/replayqa`. If the project needs authentication, its pane shows **Connect Replay QA** and **Sign in with browser** instead of a dashboard login popup.
+
+**Connect Replay QA** opens `/mcp`: choose the plugin's `replay-qa` server and authenticate it. Closing that menu retries the project using the MCP sign-in. A separate server named `replay` is for recording/debugging and does not sign this dashboard in.
+
+If MCP sign-in is unavailable, **Sign in with browser** (or `/replayqa login`) runs the pinned CLI's browser login in your normal browser, then refreshes the project automatically. Cancelled or failed sign-in leaves the recovery actions available. You can also run `npx --yes replayqa@0.7.0 login` in a terminal and choose **Retry**.
+
+Without a browser, set `REPLAY_QA_API_KEY` to a Replay QA API token. A project-access denial is reported separately from a missing sign-in.
 
 ## What this plugin runs, sends and stores
 

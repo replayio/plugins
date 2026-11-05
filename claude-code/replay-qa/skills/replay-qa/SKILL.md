@@ -18,6 +18,13 @@ npx --yes replayqa@0.7.0 context
 
 ## Authentication
 
+When the project pane requests sign-in, use **Connect Replay QA** to authenticate the plugin's
+`replay-qa` MCP server through `/mcp`. A separate server named `replay` does not authenticate Replay QA.
+The pane retries after the MCP menu closes. If that connection is unavailable, use **Sign in with
+browser** or `/replayqa login`: the normal browser opens and the project reloads when sign-in succeeds.
+Do not use a login popup inside the headless project view or ask the user to paste credentials.
+
+
 The CLI shares Replay's login cache. Authenticate once:
 
 ```bash

@@ -40,6 +40,16 @@ its own and stops it itself only once the tunnel is up, so stopping a run signal
 
 ## Signing in
 
+A project with no usable sign-in shows native terminal recovery actions rather than loading the
+headless dashboard's login popup. **Connect Replay QA** opens Claude's MCP menu; authenticate the
+plugin's `replay-qa` server, not a separate `replay` debugging server. When the menu closes, the hooks
+module retries credential sharing and the selected project. **Sign in with browser** and
+`/replayqa login` run the pinned CLI's login in the normal browser and reload the project after it
+saves the shared auth cache. Only the person's action starts interactive sign-in. A failed or
+cancelled login stays on this screen with Retry available; a 403 project denial does not send the
+person back through login.
+
+
 The plugin declares the Replay QA MCP server (`../.mcp.json`). Where that server offers `create_cli_credential`, sign in once with
 `/mcp`, and:
 

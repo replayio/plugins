@@ -283,7 +283,8 @@ test('with no sign-in at all the canvas says what works: no /mcp, which would no
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const { relay } = await withRelay(t, SHOP, { HOME: home, REPLAY_QA_API_KEY: '' })
-  const { error } = (await relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')).data
+  const { error, authRequired } = (await relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')).data
+  assert.equal(authRequired, true)
   assert.equal(error, 'No Replay QA sign-in: run `npx --yes replayqa@0.7.0 login`, or set REPLAY_QA_API_KEY')
   assert.deepEqual((await relay.call('GET', '/auth/status')).data, { mcp: [], existing: false })
 })
@@ -615,4 +616,28 @@ test('dashboard browser loads /p/, forwards clicks and typing, and resizes witho
   for (const event of ['down', 'up']) await input({ type: 'pointer', event, button: 'left', x: 0.25, y: 0.25 })
   await until(() => observations.some(o => new URL(o.url, origin).searchParams.get('clicks') === '2'))
   await relay.call('POST', '/canvas/proj-dashboard/view', { on: false })
+})
+
+
+test('project access denial is not a request to sign in again', async t => {
+  const { mock, relay } = await withRelay(t, SHOP)
+  mock.fail('proj-shop', 403)
+  const denied = (await relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')).data
+  assert.equal(denied.authRequired, false)
+  assert.match(denied.error, /denied access.*project member/)
+  assert.equal(denied.error.includes('login'), false)
+})
+
+test('a browser login saved while the relay is running recovers the project without a restart', async t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-home-'))
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }))
+  const { relay } = await withRelay(t, SHOP, { HOME: home, REPLAY_QA_API_KEY: '' })
+  const read = () => relay.call('GET', '/qa/overview?project=proj-shop&refresh=1')
+  assert.equal((await read()).data.authRequired, true)
+  fs.mkdirSync(path.join(home, '.replay', 'profile'), { recursive: true })
+  fs.writeFileSync(path.join(home, '.replay', 'profile', 'auth.json'), JSON.stringify({ accessToken: 'browser.login.token', refreshToken: 'r' }))
+  const ready = (await read()).data
+  assert.equal(ready.authRequired, false)
+  assert.equal(ready.error, null)
+  assert.equal(ready.project.id, 'proj-shop')
 })

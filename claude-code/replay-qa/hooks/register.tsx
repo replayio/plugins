@@ -63,6 +63,7 @@ type Overview = {
   /** The QA server's API base when it is not the default one (a PR preview, staging). */
   server?: string | null
   error: string | null
+  authRequired?: boolean
   updatedAt: number
   following: boolean
   counts: { live: number; journeys: number; bugs: number; failed: number }
@@ -89,7 +90,7 @@ const LAST_PROJECT_PREFIX = 'qa-last-project:'
 /** The pinned CLI, as the skill and the relay run it; REPLAY_QA_CLI runs a checkout instead. */
 const REPLAYQA = ['npx', '--yes', 'replayqa@0.7.0']
 /** The plugin's MCP server (.mcp.json), and the tool that lets a process run as the person who signed in to it. */
-const MCP_SERVER = 'replay-qa'
+const MCP_SERVER = 'plugin:replay-qa:replay-qa'
 const MCP_CREDENTIAL_TOOL = 'create_cli_credential'
 /** After the MCP server had no sign-in to give, how long until a background check asks again. A person's command always asks. */
 const SIGN_IN_RETRY_MS = 5 * 60_000
@@ -159,6 +160,8 @@ const state = {
   /** What the MCP server last said to a request for a credential, for what the list tells the person to do. */
   mcpAnswer: null as 'gave' | 'needs-sign-in' | 'cannot-share' | null,
   signingIn: null as Promise<void> | null,
+  browserLogin: null as Promise<void> | null,
+  loginError: null as string | null,
   /** Where the dashboard picture sits in the pane body, for the wheel; the screencast size last asked for. */
   canvasPicture: null as { top: number; columns: number; rows: number } | null,
   canvasAsked: null as { width: number; height: number } | null,
@@ -329,7 +332,7 @@ async function followProject($: EngineInterface, projectId: string, server?: str
   state.overviews.set(projectId, overview)
   state.activeAt.set(projectId, Date.now())
   await rememberProject($, projectId)
-  if (overview.error) $.ui.toast(`Replay QA: ${overview.error}`)
+  if (overview.error && !needsProjectSignIn(overview)) $.ui.toast(`Replay QA: ${overview.error}`)
   return overview
 }
 
@@ -435,6 +438,44 @@ function signInLine(): string {
   if (state.auth.existing) return 'Using your existing Replay sign-in.'
   if (state.mcpAnswer === 'needs-sign-in') return 'Not signed in: run /mcp and sign in to replay-qa, or run npx --yes replayqa@0.7.0 login.'
   return 'The live views and tunnels have no sign-in. Run npx --yes replayqa@0.7.0 login: the replay-qa MCP server cannot share its sign-in with them yet.'
+}
+
+/** Explicit API status wins; older relays may only provide the diagnostic text. */
+function needsProjectSignIn(overview?: Overview): boolean {
+  return overview?.authRequired ?? /No Replay QA sign-in|answered 401|authentication required/i.test(overview?.error ?? '')
+}
+
+/** CLI login opens the person's normal browser, never a popup in the headless dashboard. */
+function loginInBrowser($: EngineInterface): Promise<void> {
+  if (state.browserLogin) return state.browserLogin
+  state.loginError = null
+  state.browserLogin = (async () => {
+    $.ui.invalidate('ui.render')
+    const result = await $.process.run([...state.cli, 'login'], { cwd: state.cwd, timeoutMs: 300_000 })
+    if (result.exitCode !== 0) throw new Error('Replay sign-in did not finish. Try again, or run /mcp and authenticate replay-qa.')
+    const status = await relayJson<{ mcp: { origin: string; expiresAt: number }[]; existing: boolean }>($, '/auth/status')
+    state.auth = { ...status, askedAt: Date.now() }
+    if (!status.existing && !status.mcp.length) throw new Error('No usable Replay sign-in was saved. Run /mcp and authenticate replay-qa, then retry.')
+    if (state.canvasProjectId) await showCanvas($, state.canvasProjectId)
+    else await tellRelayFolder($)
+  })().catch(() => {
+    // Process failures may contain sensitive browser-auth output; show only a fixed diagnostic.
+    state.loginError = 'Sign-in did not finish. Try again, or run /mcp and authenticate replay-qa, then retry.'
+  }).finally(() => {
+    state.browserLogin = null
+    $.ui.invalidate('ui.render')
+  })
+  return state.browserLogin
+}
+
+async function openMcpSignIn($: EngineInterface): Promise<void> {
+  state.loginError = null
+  try {
+    await $.command.run({ command: 'mcp', args: '' })
+  } catch {
+    state.loginError = 'Run /mcp, choose replay-qa and authenticate it. Then run /replayqa again.'
+    $.ui.invalidate('ui.render')
+  }
 }
 
 // ------------------------------------------------------------------ folder
@@ -549,6 +590,7 @@ async function openFolder($: EngineInterface, { apps = false } = {}): Promise<st
       // No config names it: it is here only because it was the last one used in this folder, so that is said.
       state.canvasNote = only || config.projectId === projectId ? null : 'This is the last project used in this folder: no .replay/config.json names one. /replayqa setup shows what else is here.'
       const o = state.overviews.get(projectId)
+      if (needsProjectSignIn(o)) return 'Sign in to Replay QA in the project pane. Connect the replay-qa MCP server, or choose Sign in with browser.'
       return [
         `Replay QA dashboard for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.`,
         state.canvasNote ?? '',
@@ -860,6 +902,11 @@ async function showCanvas($: EngineInterface, projectId: string, server?: string
   state.canvasNote = null
   await openPane($)
   try {
+    if (needsProjectSignIn(state.overviews.get(projectId))) {
+      await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false })
+      $.ui.invalidate('ui.render')
+      return
+    }
     await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: true, width: 1600, height: 900 })
   } catch (err) {
     // No renderer: the pane says so, and the browser view still works.
@@ -973,6 +1020,11 @@ async function watchOverviews($: EngineInterface): Promise<void> {
         const before = state.overviews.get(projectId)
         const overview = await relayJson<Overview>($, `/qa/overview?project=${encodeURIComponent(projectId)}`)
         state.overviews.set(projectId, overview)
+        if (state.canvasProjectId === projectId && needsProjectSignIn(before) && !needsProjectSignIn(overview)) {
+          await showCanvas($, projectId)
+        } else if (state.canvasProjectId === projectId && !needsProjectSignIn(before) && needsProjectSignIn(overview)) {
+          await relayJson($, `/canvas/${encodeURIComponent(projectId)}/view`, { on: false })
+        }
         if (!before || before.counts.live !== overview.counts.live || before.error !== overview.error || before.counts.bugs !== overview.counts.bugs || before.counts.failed !== overview.counts.failed) changed = true
         if (overview.counts.live > 0 || state.canvasProjectId === projectId) state.activeAt.set(projectId, Date.now())
         else if (Date.now() - (state.activeAt.get(projectId) ?? Date.now()) > IDLE_UNFOLLOW_MS) await unfollowProject($, projectId)
@@ -1026,9 +1078,19 @@ export const register: Register = on => {
     await $.command.register({
       name: 'replayqa',
       description: "Replay QA for this folder: its project's dashboard of every journey, the index of its projects, or the list to set one up",
-      argumentHint: '[canvas|setup|use|test|start|stop|follow|unfollow|live|open|status] [project id, dashboard URL, app path or recording]',
+      argumentHint: '[login|canvas|setup|use|test|start|stop|follow|unfollow|live|open|status] [project id, dashboard URL, app path or recording]',
     })
     return started
+  })
+
+  // After the person's MCP panel closes, share its sign-in and retry the selected project.
+  on('command.run', { command: 'mcp' }, async ($, e, next) => {
+    const result = await next(e)
+    if (state.relay && state.canvasProjectId && needsProjectSignIn(state.overviews.get(state.canvasProjectId))) {
+      await signRelayIn($, { force: true })
+      await showCanvas($, state.canvasProjectId)
+    }
+    return result
   })
 
   on('command.run', { command: 'replayqa' }, async ($, e) => {
@@ -1038,6 +1100,11 @@ export const register: Register = on => {
     const verb = parseProjectArg(first).projectId ? 'canvas' : first
     const named = parseProjectArg(parseProjectArg(first).projectId ? first : arg)
     try {
+      if (verb === 'login') {
+        void loginInBrowser($)
+        await openPane($)
+        return { text: 'Opening Replay sign-in in your browser. This pane refreshes when sign-in finishes.' }
+      }
       // A person's command is a hook, so the MCP sign-in can reach the relay from here, and they may just have signed in.
       if (!['live', 'open', 'status'].includes(verb)) await signRelayIn($, { force: true })
       if (verb === '' || (verb === 'canvas' && !arg && !named.projectId)) return { text: await openFolder($) }
@@ -1078,6 +1145,7 @@ export const register: Register = on => {
         if (verb === 'canvas') {
           await showCanvas($, projectId, server)
           const o = state.overviews.get(projectId)
+          if (needsProjectSignIn(o)) return { text: 'Sign in to Replay QA in the project pane. Connect the replay-qa MCP server, or choose Sign in with browser.' }
           return { text: `Replay QA dashboard for ${o?.project?.name ?? projectId}: ${o?.counts.live ?? 0} live, ${o?.counts.journeys ?? 0} journeys. Running work streams in as it starts.` }
         }
         const o = await followProject($, projectId, server)
@@ -1324,6 +1392,26 @@ export const register: Register = on => {
     }
     if (!projectId) return <Text dimColor>No project: run /replayqa for this folder, or /replayqa canvas &lt;project id&gt;.</Text>
     const overview = state.overviews.get(projectId)
+    if (needsProjectSignIn(overview)) {
+      state.canvasPicture = null
+      state.mounted.delete(PANE)
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text bold>Sign in to Replay QA</Text>
+          <Text wrap="wrap">Connect the replay-qa MCP server to view this project. The separate server named replay is for recording and debugging.</Text>
+          <Text wrap="wrap">Choose replay-qa in the MCP menu and authenticate. If that connection is unavailable, use Sign in with browser.</Text>
+          {state.browserLogin ? <Text>Waiting for sign-in in your browser…</Text> : null}
+          {state.loginError ? <Text color="red" wrap="wrap">{state.loginError}</Text> : null}
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Button key="sign-in-mcp" label="Connect Replay QA" onPress={() => openMcpSignIn($)} />
+            <Button key="sign-in-browser" label="Sign in with browser" onPress={() => { void loginInBrowser($) }} />
+            <Button key="retry-auth" label="Retry" onPress={() => { void $.command.run({ command: 'replayqa', args: `canvas ${projectId}` }).catch(() => {}) }} />
+            <Button key="open" label="Open in browser" onPress={() => openUrl($, canvasPage(projectId))} />
+            <Button key="close" label="Close" onPress={() => { void $.ui.close({ id: PANE }) }} />
+          </Box>
+        </Box>
+      )
+    }
     const frame = state.frames[canvasFrameId(projectId)]
     const bodyRows = e.props.scroll.bodyRows > 0 ? e.props.scroll.bodyRows : Math.max(8, (e.viewport?.rows ?? 30) - 8)
     // The picture is the dashboard, filling the pane between the header line and the footer line;
