@@ -1,5 +1,6 @@
 ---
 name: "replay-qa"
+user-invocable: false
 description: "Managed E2E testing service for finding bugs and adversarial verification"
 allowed-tools: Bash(npx --yes replayqa@0.7.0 *)
 ---
@@ -106,20 +107,13 @@ npx --yes replayqa@0.7.0 rerun-journeys --bug-id bug_id_here
 npx --yes replayqa@0.7.0 report-missing-bug "Settings changes do not persist after refresh."
 ```
 
-## Slash Commands
+## User Entry Point
 
-This plugin also ships command files in the plugin `commands/` directory. Invoke them through the plugin namespace when available:
+`/replayqa` is the plugin's single visible slash command. This skill remains available for Claude
+to invoke automatically when the user asks to run QA, inspect bugs, check status, or verify fixes.
+Use the CLI workflows below to carry out those requests; do not suggest namespaced slash commands.
 
-| Command | Purpose |
-| --- | --- |
-| `/replay-qa:run-full-qa` | Bootstrap or resume QA, show status, show reverse-proxy instructions, and fetch open bugs. |
-| `/replay-qa:qa-status` | Show or watch project status. |
-| `/replay-qa:qa-bugs` | Fetch open bug details for repair work. |
-| `/replay-qa:start-new-exploration` | Start a focused exploration. |
-| `/replay-qa:rerun-journeys` | Use supported journey retry alternatives. |
-| `/replay-qa:report-missing-bug` | Ask Replay QA to investigate a missed issue. |
-
-With function hooks enabled the plugin also adds `/replayqa` (no namespace). With no argument it follows the session's folder: one project opens its dashboard, several draw an index to choose from, and none draw the list to set one up, with one action per app to start it and its tunnel. `/replayqa canvas [project]`, `/replayqa setup` (the list, even where a project is configured), `/replayqa use <project>`, `/replayqa test <url>`, `/replayqa start|stop <app path>`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`, `/replayqa status`.
+With function hooks enabled the plugin adds `/replayqa` (no namespace). With no argument it follows the session's folder: one project opens its dashboard, several draw an index to choose from, and none draw the list to set one up, with one action per app to start it and its tunnel. `/replayqa canvas [project]`, `/replayqa setup` (the list, even where a project is configured), `/replayqa use <project>`, `/replayqa test <url>`, `/replayqa start|stop <app path>`, `/replayqa live`, `/replayqa open [recording]`, `/replayqa follow|unfollow [project]`, `/replayqa status`.
 
 ## Live Views
 

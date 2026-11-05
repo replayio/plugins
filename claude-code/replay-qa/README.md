@@ -13,9 +13,8 @@ claude plugin install replay-qa@replayio
 
 ## Use it
 
-- **Ask Claude.** The `replay-qa` skill covers setting up a project, running QA, reading bugs and verifying fixes.
-- **Slash commands:** `/replay-qa:run-full-qa`, `/replay-qa:qa-status`, `/replay-qa:qa-bugs`, `/replay-qa:rerun-journeys`, `/replay-qa:start-new-exploration` and `/replay-qa:report-missing-bug`.
-- **Live views:** `/replayqa` follows the folder you're in. It opens the project's dashboard, lists the projects in a monorepo, or suggests how to set up the apps it finds. Tool results also become inline players. These need a Claude Code build with function hooks, enabled with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`. See [`live/README.md`](live/README.md).
+- **Ask Claude.** The background QA skill covers setting up a project, running QA, reading bugs and verifying fixes. Claude can use it automatically; it does not add another slash-menu entry.
+- **One command: `/replayqa`.** It follows the folder you're in. It opens the project's dashboard, lists the projects in a monorepo, or suggests how to set up the apps it finds. Tool results also become inline players. These need a Claude Code build with function hooks, enabled with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`. See [`live/README.md`](live/README.md).
 
 ## Sign in
 

@@ -1,6 +1,6 @@
 {
   "name": "replay-qa",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "description": "Run Replay QA from Claude Code with inline recording players and an interactive project dashboard that supports clicks, typing, scrolling and resizing.",
   "author": {
     "name": "Replay",
