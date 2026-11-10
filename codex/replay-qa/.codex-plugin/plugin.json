@@ -1,6 +1,6 @@
 {
   "name": "replay-qa",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Run Replay QA against production, staging, and PR preview URLs with replayqa CLI project, status, bug, journey, and exploration workflows.",
   "author": {
     "name": "Replay",
@@ -61,7 +61,7 @@
             {
               "description": "Browse unresolved bugs in the reviewer project.",
               "prompt": "Open the Bugs tab for my Replay QA review project and tell me which project we are working in.",
-              "tools_triggered": "list_projects, open_qa_dashboard, qa_api_read",
+              "tools_triggered": "list_projects, open_qa_dashboard or show_in_qa_dashboard, qa_api_read",
               "expected_behavior": "Open the accessible reviewer project on the Bugs tab and answer using its identity from the app context. Resolved reports are excluded. No testing is started."
             },
             {
