@@ -146,6 +146,8 @@ The plugin connects the Replay QA MCP server, which signs in with Replay on firs
 - When the user names a project, pass `project_id` (an id or a dashboard URL). `page` opens `overview`, `bugs` or `test-runs`.
 - Pass `bug_id`, `test_session_id`, `journey_id` or `test_run_id` to open that page directly.
 
+`open_qa_dashboard` opens a new view each time, so use it only when none is open. When the latest Replay QA app context has a `view_id`, the user already has a view, as when they are chatting beside the Replay QA canvas: call `show_in_qa_dashboard` with that `view_id` and the same arguments, and the open view changes page. If it answers that the view is no longer open, or the server has no such tool, call `open_qa_dashboard`.
+
 If the server has no `open_qa_dashboard` tool yet, say the view is not available and print the lists.
 
 Where the host draws MCP Apps, the view is the site's own pages, and the latest app context names the exact page the user is on: its project, and any bug, test run or journey. Use it for "this bug", "this run" and "this project". It follows the page, so going back drops the bug. A page being open never authorizes starting QA. Its setup actions send you a message with the exact command to run. Elsewhere the tool answers with a one-line summary, and the commands above remain the way to read details.
