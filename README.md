@@ -35,6 +35,19 @@ codex plugin marketplace add https://github.com/replayio/plugins \
   --sparse codex/replayio
 ```
 
+In the desktop app's **Add plugin marketplace** dialog, use source `replayio/plugins` and Git ref
+`main`. Leave **Sparse paths** empty to include both plugins, or enter these paths on separate
+lines for Replay QA only:
+
+```text
+.agents/plugins/marketplace.json
+codex/replay-qa
+```
+
+Using only `codex/replay-qa` omits the marketplace manifest and causes “marketplace root does not
+contain a supported manifest.” The plugin's `.codex-plugin/plugin.json` describes the plugin;
+the repository's `.agents/plugins/marketplace.json` is the catalog required by **Add marketplace**.
+
 Install the Claude Code plugins from the Claude Code plugin marketplace:
 
 ```bash
