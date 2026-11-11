@@ -1,6 +1,6 @@
 {
   "name": "replay-qa",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Run Replay QA against production, staging, and PR preview URLs with replayqa CLI project, status, bug, journey, and exploration workflows.",
   "author": {
     "name": "Replay",

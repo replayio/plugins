@@ -1,6 +1,6 @@
 {
   "name": "replayio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Direct Replay.io dev tools for Replay Chromium recording, rrweb streams watchable live or afterwards, worker/critic proof loops, upload hooks, and Replay MCP debugging.",
   "author": {
     "name": "Replay",
@@ -29,7 +29,7 @@
   "mcpServers": "./.mcp.json",
   "hooks": "./hooks.json",
   "interface": {
-    "displayName": "Replay.io Pro",
+    "displayName": "Replay.io",
     "shortDescription": "Direct Replay.io dev tools for recordings, rrweb streams, proof loops, and Replay MCP debugging",
     "longDescription": "Every agent-browser session runs in Replay Chromium and is recorded as an rrweb stream to a .rrweb file, watchable in a browser while it runs and afterwards. Closing the browser uploads its Replay recordings. A worker/critic loop proves UI work against the uploaded recording, and Replay MCP debugs it.",
     "developerName": "Replay",
