@@ -50,20 +50,42 @@ When reporting setup, say whether the id was reused from `.replay/config.json`, 
 
 Replay QA needs network access to the app under test. Do not create, scaffold, or modify the target application unless the user asks, and do not add a `.replay/config.json` merely because this skill loaded.
 
-From the app's repository, start its normal dev server behind the CLI's wrapper. The target URL is the stable browser-visible origin and the upstream URL is the dev server; their ports must differ:
+`detect` gives each app a `setup.command` that starts it and its tunnel from the app's folder. Use the app's documented command or the user's approved setup; ask only when the command or intended app is ambiguous.
+
+Before starting a dev server, wrapper, or tunnel, check **every listener**: the upstream app, the wrapper target, the local forward proxy, and any emulators. In the pinned CLI 0.7.0, the forward proxy defaults to **127.0.0.1:8888**; another Replay QA session may already own it. Choose an explicit free `--local-port` for each tunnel. Use `lsof -nP -iTCP:<port> -sTCP:LISTEN`, identify existing listeners, and verify which app they serve. Reuse the intended app with `--no-app` or `proxy`. Reuse a tunnel only after verifying its project and target. Choose another port for an unrelated listener; do not kill it to free the port.
+
+From the app's folder, keep the browser-visible wrapper URL and upstream dev server URL distinct. After confirming ports 3000, 5173, and 8890 are available, an existing project's setup is:
 
 ```bash
 npx --yes replayqa@0.7.0 run http://localhost:3000 \
   --upstream-url http://127.0.0.1:5173 \
   --app-command "npm run dev -- --host 0.0.0.0 --port 5173" \
-  --project proj_123
+  --project proj_123 --local-port 8890 --json
 ```
 
-`run` keeps the app, wrapper and proxy alive until interrupted, so run it in a background shell. It does not create a project: use a configured id, pass one, or add `--create-project` when the user asks for a new one. For an app that is already running, use `--no-app`, or connect it directly:
+For an authorized **new local project**, replace `--project proj_123` with `--create-project --no-start-exploration`. When creating it through MCP instead, pass `start_exploration: false`. Do not call `full-qa` or `bootstrap` with their default automatic exploration against a disconnected local app.
+
+Keep `run` alive in a background shell: it owns the app, wrapper, and tunnel. With `--no-app`, it still owns any wrapper it creates and the tunnel. A startup message, reachable upstream, or allocated tunnel address does not establish readiness. Wait for a `heartbeat` event with `"ready": true`, then inspect the project's `context` and `reverse-proxy` status. Check the resolved target URL and Local environment against the browser-visible URL you intended to test.
+
+Only after readiness, start the one initial exploration requested by a new local QA task, using the project ID that was created and saved:
 
 ```bash
-npx --yes replayqa@0.7.0 proxy --project proj_123 --target-url http://localhost:3000
+npx --yes replayqa@0.7.0 start-exploration \
+  --project proj_123 --prompt "Test the app's main flows, validation, and persistence."
 ```
+
+For a reused project, connecting the tunnel can resume queued journeys; do not create another exploration unless the user requested one. Keep the process alive until the requested QA finishes, and keep checking connection health while monitoring its runs.
+
+For an app already serving at the intended browser-visible URL, connect directly with a verified free proxy port:
+
+```bash
+npx --yes replayqa@0.7.0 proxy --project proj_123 \
+  --target-url http://localhost:3000 --local-port 8890 --json
+```
+
+When recovering a setup with a wrapper, preserve its browser-visible URL. If `run` exited, restart it with the same target and upstream, using `--no-app` when the upstream is still running. Switching `proxy --target-url` to the upstream can leave the Local environment and the project's default URL different. If an exploration still uses the old URL, inspect its resolved target and environment before retrying; do not silently change the shared project default or launch repeated explorations against that stale URL.
+
+Describe tunnel startup as pending until readiness is confirmed; do not promise a fixed startup time. Keep the process running while provisioning or DNS advances. If there is no progress for two minutes, inspect its logs and run `doctor` from another shell before retrying. Process exit, port conflicts, and authentication errors need immediate diagnosis. If a ready tunnel later returns 502, `ECONNREFUSED`, or DNS errors, inspect the connection and resolved target before resuming QA; report tunnel failures as infrastructure obstacles rather than app defects.
 
 Use `--allow` when the browser must reach additional local or private hosts. Pass `--public` to project creation when the user provides a public URL.
 
@@ -130,8 +152,8 @@ When you start an exploration for the user, say that the live player is in the r
 Use this loop for QA and repair:
 
 1. Start or confirm the app under test.
-2. Run `full-qa` with the target URL and any user instructions.
-3. If a private target needs connecting, keep `replayqa run` or `replayqa proxy` running in a background shell.
+2. For a public target, run `full-qa` with the URL and user instructions. For a local target, follow Local Apps: defer new-project exploration until the tunnel is ready.
+3. Keep any local `replayqa run` or `replayqa proxy` process alive while the requested QA runs.
 4. Poll `status` until there is useful progress.
 5. Fetch open bug details with `bugs --status open --details --save`. They land under `.replay/qa-bugs/`.
 6. Read the full bug report before editing code. Use Replay QA's reproduction steps, expected behavior, actual behavior, evidence, and root-cause analysis as the primary debugging source.
@@ -140,7 +162,7 @@ Use this loop for QA and repair:
 9. Poll status and list open bugs again.
 10. Repeat until no open bugs remain.
 
-Do not manually start new explorations unless the user asks. Project creation already starts the normal QA workflow.
+Start the deferred initial local exploration once the requested setup is ready. Otherwise, do not start new explorations unless the user asks; ordinary project creation already starts its initial exploration.
 
 ## Journey Reruns
 
