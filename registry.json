@@ -49,7 +49,7 @@
     {
       "name": "codex-pro",
       "type": "registry:item",
-      "title": "Replay.io Pro Codex Plugin",
+      "title": "Replay.io Codex Plugin",
       "description": "Codex Replay.io dev tools bundle for the direct Replay MCP server, Replay Chromium recordings with temporary read-only Chrome profile import, rrweb streams of every agent-browser session watchable live or afterwards, worker/critic proof loops, upload hooks, and debugging widgets.",
       "files": [
         {

@@ -80,6 +80,8 @@ Replay QA needs network access to the app under test. Do not create, scaffold, o
 
 `detect` gives each app a `setup.command` that starts it and its tunnel as one process, from the app's folder, so its project lands there. Confirm the dev command and port with the user first.
 
+Before running a setup command, dev server, or wrapper, check every port it will bind, including the app's upstream port and the wrapper's target port. Use `lsof -nP -iTCP:<port> -sTCP:LISTEN` or an equivalent listener check, then identify any listener and verify which app it serves. If the intended app is already running, reuse it with `--no-app` or `proxy` instead of launching another copy. Reuse an existing tunnel only after verifying its project and target. If an unrelated process owns a required port, choose an available port and update the command and URLs consistently; do not kill the process to free the port.
+
 Otherwise, from the app's repository, start its normal dev server behind the CLI's wrapper. The target URL is the stable browser-visible origin and the upstream URL is the dev server; their ports must differ:
 
 ```bash
@@ -94,6 +96,8 @@ npx --yes replayqa@0.7.0 run http://localhost:3000 \
 ```bash
 npx --yes replayqa@0.7.0 proxy --project proj_123 --target-url http://localhost:3000
 ```
+
+Whenever starting a tunnel with `run` or `proxy`, tell the user: "The tunnel may report errors for up to two minutes while it starts." Keep the process running and monitor readiness during that window; do not restart it solely for transient connection errors. This grace period does not apply to a process exit or a clear configuration failure such as a port conflict or authentication error. If errors persist after two minutes, inspect the logs and run `doctor` before retrying. Report the tunnel as ready only after readiness is confirmed.
 
 Use `--allow` when the browser must reach additional local or private hosts. Pass `--public` to project creation when the user provides a public URL.
 
